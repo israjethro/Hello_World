@@ -112,11 +112,52 @@ The first deployment will prompt the user to authorize:
   configured sheet by ID (Option B).
 - `https://www.googleapis.com/auth/script.container.ui` - render the
   dashboard inside the host UI.
-- `https://www.googleapis.com/auth/script.external_request` - load
-  the ECharts library from its CDN at view time.
 
 These are declared in `appsscript.json` so the consent screen lists
 them up-front instead of prompting on first call.
+
+> Note: ECharts and the Google Font are loaded from public CDNs by
+> the user's browser at view time. Those fetches do not go through
+> Apps Script and therefore do not require the
+> `script.external_request` scope (which only governs server-side
+> `UrlFetchApp` calls). The scope is intentionally **not** declared.
+
+## Security and access
+
+The default `appsscript.json` declares the web app as:
+
+```json
+"webapp": {
+  "access": "ANYONE_WITH_GOOGLE",
+  "executeAs": "USER_DEPLOYING"
+}
+```
+
+and `Code.gs` calls
+`HtmlService.XFrameOptionsMode.ALLOWALL` on the rendered page.
+
+What that means for the QA team data:
+
+- **Anyone with a Google account** who learns the deployment URL can
+  open the dashboard.
+- The page runs **as the deployer**, so it can read the QA sheet
+  even for viewers who do not have direct access to the spreadsheet.
+- The page can be **embedded in an iframe from any origin** (handy
+  for pasting into a Sites/Confluence/Notion page, but it also means
+  anyone who copies the URL can frame the dashboard).
+
+This is permissive on purpose - the dashboard is meant to be easy to
+share inside the team. To tighten it for a more sensitive deployment:
+
+| Goal | Change |
+| --- | --- |
+| Restrict to deployer only | `appsscript.json` -> `webapp.access` = `MYSELF` |
+| Restrict to a Google Workspace domain | `webapp.access` = `DOMAIN` (works only for paid Workspace deployments) |
+| Run as the viewer (so each user must have access to the sheet) | `webapp.executeAs` = `USER_ACCESSING` |
+| Block iframe embedding | `Code.gs` -> change `setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)` to `setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT)` |
+
+After changing any of the above, redeploy a new version for the
+change to take effect.
 
 ## Cache TTL
 
@@ -128,13 +169,27 @@ can take up to 60 seconds to appear.
 
 To bust the cache immediately:
 
-- Open the Apps Script editor.
-- Make any trivial edit to `DataService.gs` (e.g. add and remove a
-  space) and **Save**, then redeploy.
-  Saving invalidates the script cache and serves a fresh read on the
-  next request.
-- Alternatively, run `CacheService.getScriptCache().removeAll([...])`
-  from the editor with the cache keys you want cleared.
+- **Wait it out.** Entries expire after 60 seconds; the next request
+  reads fresh from the sheet. Saving or redeploying the script does
+  **not** clear `CacheService` - those entries persist until TTL
+  expiry or an explicit `removeAll`.
+- **Clear it from the editor.** In the Apps Script editor, run a
+  one-line function such as:
+
+  ```js
+  function clearDashboardCache() {
+    CacheService.getScriptCache().removeAll([
+      'getMembers::[]',
+      'getAllTasks::[]',
+      'getAllSummaries::[]',
+      'getChartData::[]'
+    ]);
+  }
+  ```
+
+  (Per-member keys look like `getMemberTasks::["Isra"]` etc.)
+- **Lower `CACHE_TTL_SECONDS_`** at the top of `DataService.gs` and
+  redeploy if you want shorter caching during active sheet edits.
 
 ## Optional: clasp
 
