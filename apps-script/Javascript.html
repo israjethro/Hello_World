@@ -31,6 +31,13 @@
     // MOCK data - 5 members x 3 dates, mirrors the real sheet shape.
     // Used when google.script.run is not available (standalone preview)
     // and as a graceful fallback when a server call rejects.
+    //
+    // MOCK_MEMBERS must stay in lock-step with MEMBER_SHEETS in
+    // Code.gs - every other slice (real or mock) is keyed by these
+    // names. If the rosters drift, a getMembers-only failure would
+    // surface mock names against real-keyed data; init() below also
+    // derives the member list from live tasksByMember keys so this
+    // hand-coupling is no longer the only line of defense.
     // ===================================================================
     var MOCK_MEMBERS = ['Isra', 'Sowmiya', 'Keerthana', 'Yogesh', 'Tamizharasi'];
 
@@ -142,7 +149,7 @@
           memHours += h;
           memBugs  += Number(r.noOfBugs) || 0;
           if (String(r.billability || '').toUpperCase() === 'YES') billable += h;
-          else if (r.billability) nonBillable += h;
+          else nonBillable += h;
           var st = String(r.status || '').toUpperCase();
           if (st === 'COMPLETED') statusCounts.COMPLETED++;
           else if (st === 'IN-PROGRESS' || st === 'IN PROGRESS') statusCounts['IN-PROGRESS']++;
@@ -527,13 +534,19 @@
               },
               series: [{
                 type: 'bar3D',
-                data: values.map(function (v, i) { return [i, 0, v]; }),
+                // echarts-gl honors per-data-point {value, itemStyle}
+                // on bar3D, so apply the same selectedIdx pink the
+                // 2D fallback uses. Without this the selected member
+                // would produce no visible change in the 3D path.
+                data: values.map(function (v, i) {
+                  var item = { value: [i, 0, v] };
+                  if (i === selectedIdx) {
+                    item.itemStyle = { color: '#ff6b9a', opacity: 1.0 };
+                  }
+                  return item;
+                }),
                 shading: 'lambert',
                 bevelSize: 0.3, bevelSmoothness: 4,
-                // Highlight the selected member's bar.
-                itemStyle: selectedIdx >= 0
-                  ? { opacity: 1.0 } // base; per-bar emphasis below
-                  : undefined,
                 emphasis: { itemStyle: { color: '#ff6b9a' } }
               }]
             };
@@ -940,48 +953,77 @@
       // Use Promise.allSettled so one failed call does not collapse the
       // entire dashboard to mock - any slice that succeeded is rendered
       // with real data, and only the rejected slices fall back.
-      var calls = ['getMembers', 'getAllTasks', 'getAllSummaries', 'getChartData'];
+      //
+      // The notice text names the affected PANELS (legible to a
+      // non-developer reader) as well as the underlying server fn
+      // (legible to an operator), so a partial-mock state cannot be
+      // confused for a fully-real or fully-mock dashboard.
+      var calls       = ['getMembers',     'getAllTasks', 'getAllSummaries', 'getChartData'];
+      var slicePanels = ['member buttons', 'task table',  'KPI cards',       'charts (bar / status / trend)'];
       Promise.allSettled([
         runServer('getMembers'),
         runServer('getAllTasks'),
         runServer('getAllSummaries'),
         runServer('getChartData')
       ]).then(function (results) {
-        var failed = [];
-        function slice(idx, validate, mockFn) {
+        function unwrap(idx, validate) {
           var r = results[idx];
-          if (r.status === 'fulfilled' && validate(r.value)) return r.value;
-          if (r.status === 'rejected') {
-            failed.push(calls[idx] +
-              (r.reason && r.reason.message ? ': ' + r.reason.message : ''));
-          } else {
-            failed.push(calls[idx] + ': empty/invalid response');
+          if (r.status === 'fulfilled' && validate(r.value)) {
+            return { ok: true, value: r.value };
           }
-          return mockFn();
+          var reason = (r.status === 'rejected' && r.reason && r.reason.message)
+            ? r.reason.message
+            : 'empty/invalid response';
+          return { ok: false, reason: reason };
         }
 
-        var members = slice(0,
-          function (v) { return Array.isArray(v) && v.length > 0; },
-          MOCK.getMembers);
-        var tasksByMember = slice(1,
-          function (v) { return v && typeof v === 'object'; },
-          MOCK.getAllTasks);
-        var summaries = slice(2,
-          function (v) { return Array.isArray(v) && v.length > 0; },
-          MOCK.getAllSummaries);
-        var chartData = slice(3,
-          function (v) { return v && typeof v === 'object'; },
-          MOCK.getChartData);
+        var membersR = unwrap(0, function (v) { return Array.isArray(v) && v.length > 0; });
+        var tasksR   = unwrap(1, function (v) { return v && typeof v === 'object'; });
+        var summR    = unwrap(2, function (v) { return Array.isArray(v) && v.length > 0; });
+        var chartR   = unwrap(3, function (v) { return v && typeof v === 'object'; });
 
-        state.members = members;
-        state.tasksByMember = tasksByMember;
-        state.summaries = summaries;
-        state.chartData = chartData;
+        var failed = [];
+        [
+          { r: membersR, fn: calls[0], panel: slicePanels[0] },
+          { r: tasksR,   fn: calls[1], panel: slicePanels[1] },
+          { r: summR,    fn: calls[2], panel: slicePanels[2] },
+          { r: chartR,   fn: calls[3], panel: slicePanels[3] }
+        ].forEach(function (s) {
+          if (!s.r.ok) failed.push({ fn: s.fn, panel: s.panel, reason: s.r.reason });
+        });
+
+        state.tasksByMember = tasksR.ok ? tasksR.value : MOCK.getAllTasks();
+        state.summaries     = summR.ok  ? summR.value  : MOCK.getAllSummaries();
+        state.chartData     = chartR.ok ? chartR.value : MOCK.getChartData();
+
+        // Members fallback ladder:
+        //   1. real getMembers() result (the dedicated slice)
+        //   2. keys of the live tasksByMember (so a getMembers-only
+        //      failure can never surface MOCK_MEMBERS against a
+        //      real-keyed tasksByMember - they are equal today but
+        //      live in two files; see MEMBER_SHEETS in Code.gs)
+        //   3. the hardcoded MOCK_MEMBERS list (last resort, used only
+        //      when both slices failed and there is no live data to
+        //      derive names from)
+        if (membersR.ok) {
+          state.members = membersR.value;
+        } else if (tasksR.ok && Object.keys(state.tasksByMember).length > 0) {
+          state.members = Object.keys(state.tasksByMember);
+        } else {
+          state.members = MOCK.getMembers();
+        }
+
         state.usingMock = failed.length > 0;
 
         if (failed.length > 0) {
+          var panels = failed.map(function (f) { return f.panel; })
+                             .filter(function (p, i, a) { return a.indexOf(p) === i; });
+          var detail = failed.map(function (f) {
+            return f.fn + (f.reason ? ': ' + f.reason : '');
+          }).join('; ');
           showMockNotice(
-            'Using sample data for: ' + failed.join('; ') + '.'
+            'Sample data is showing in: ' + panels.join(', ') +
+            '. (Reason: ' + detail + ')'
           );
         }
 

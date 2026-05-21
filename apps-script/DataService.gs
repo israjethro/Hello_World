@@ -411,7 +411,11 @@ function getAllSummaries() {
  *  - statusBreakdown: donut/pie [{label, value}] for COMPLETED vs
  *    IN-PROGRESS across the whole team
  *  - hoursPerDay: line chart, both per-member and 'all' aggregate
- *  - billableSplit: { billable, nonBillable } total hours
+ *  - billableSplit: { billable, nonBillable } total hours.
+ *    Reconciliation guarantee: billable + nonBillable === sum of
+ *    row.hours across all members. Only literal 'YES' counts as
+ *    billable; anything else (including '', 'NO', 'N/A', typos)
+ *    rolls into nonBillable.
  *  - bugsPerMember: [{member, bugs}]
  *
  * Note: billableSplit and bugsPerMember are not currently consumed
@@ -454,8 +458,13 @@ function getChartData() {
         memHours += h;
         memBugs += toNumber_(r.noOfBugs, 0);
         // Billability column uses YES/NO (upper-cased on read).
+        // Anything not literally 'YES' counts as non-billable so
+        // that billable + nonBillable === totalHours, which matches
+        // summarize_'s implicit "everything else is not billable"
+        // treatment and makes billableSplit safe to reconcile
+        // against totalHours for external getChartData consumers.
         if (r.billability === 'YES') billable += h;
-        else if (r.billability === 'NO') nonBillable += h;
+        else nonBillable += h;
         if (r.status === 'COMPLETED') statusCounts.COMPLETED++;
         else if (r.status === 'IN-PROGRESS' || r.status === 'IN PROGRESS') {
           statusCounts['IN-PROGRESS']++;
