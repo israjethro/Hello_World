@@ -3,5 +3,39 @@
   "task_description": "Build a Google Apps Script web app called 'QA - Daily Status Dashboard' that reads the 5-tab QA team Google Sheet (members: Isra, Sowmiya, Keerthana, Yogesh, Tamizharasi) and renders an elegant dashboard with: (1) a banner + interactive per-member buttons, (2) a 3D-style chart section with smooth animations, (3) KPI cards for all 5 resources, and (4) a sortable/searchable filtered task table. All source files live under a new `apps-script/` folder; the existing Java samples in src/ and bin/ remain untouched.",
   "status": "in_progress",
   "feature_order": ["FEAT-001", "FEAT-002"],
-  "blocked_reason": null
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "n/a",
+    "docker_build": "skipped",
+    "summary": "No build or test runner exists for Apps Script projects offline; this was documented in context.json up front. Static verification: appsscript.json parses (python3 json.load), all 9 server functions (doGet, include, getMembers, getConfig, getMemberTasks, getAllTasks, getMemberSummary, getAllSummaries, getChartData) defined, CacheService used 4x in DataService.gs, every <?!= include('X') ?> resolves to an existing apps-script/X.html, all CDN URLs are HTTPS, Javascript.html has both google.script.run wiring and a MOCK fallback, file sizes Banner=89 Index=95 Stylesheet=612 Javascript=1020 Code.gs=118 DataService.gs=508 lines. Existing src/, bin/, README.md are byte-identical (git diff --stat empty). No Dockerfile in repo; no docker build attempted. test_quality is n/a because the project ships no automated test suite (Apps Script is impractical to test offline without node + apps-script-mock); behavior must be exercised by the user in the deployed web app."
+  },
+  "review_iterations": [
+    {
+      "version": "v1",
+      "review_file": ".agents/tasks/task-qa-daily-status-dashboard/2026-05-21-102949-review.md",
+      "issue_count": 15,
+      "fixed": [
+        "1: server billability check 'BILLABLE' -> 'YES' in summarize_() and getChartData(); also nonBillable now exact-matches 'NO' (DataService.gs)",
+        "2: KPI cards now read from state.summaries via summaryFor() instead of recomputing client-side; buildSummary() retained only as the mock-fallback summarizer (Javascript.html)",
+        "4: Promise.all replaced with Promise.allSettled and per-slice mock fallback so a single failed call does not collapse the dashboard to MOCK; the inline notice now names the failed subsystem(s) (Javascript.html)",
+        "5: 3D-bar GL probe replaced with a reliable echarts.gl.version check; chart now renders the 2D bar by default and only upgrades to 3D when the GL plugin is confirmed present, so a CDN failure can never leave a blank canvas (Javascript.html)",
+        "6: noOfBugs cell now renders the badge alone for n>0 (or a muted '0'), no longer doubled-up '2 [2]' (Javascript.html, Stylesheet.html bug-badge margin-left removed)",
+        "7: doughnut center label renamed from 'tasks' to 'tracked' so it accurately describes COMPLETED+IN-PROGRESS rather than implying total-tasks (Javascript.html)",
+        "8: 3D bar keeps all members in the series and highlights the selected one via itemStyle/emphasis instead of filtering down to a single bar (Javascript.html)",
+        "9: state.sort is reset to {key:'date', dir:'desc'} on selection change when the current sort key (e.g. 'member') is no longer in the visible column set (Javascript.html)",
+        "10: state.search and #tableSearch.value are cleared on selection change so a sparse member tab does not show 'No tasks match \"<old query>\"' (Javascript.html)",
+        "11: README adds a 'Security and access' section documenting ANYONE_WITH_GOOGLE + USER_DEPLOYING + ALLOWALL trade-offs and how to tighten to MYSELF/DOMAIN/USER_ACCESSING/DEFAULT (apps-script/README.md)",
+        "12: removed unused script.external_request from appsscript.json oauthScopes; README now correctly notes that ECharts CDN fetches are browser-side and do NOT need the scope (apps-script/appsscript.json, apps-script/README.md)",
+        "13: README cache-busting paragraph rewritten - no more false 'saving invalidates the cache' claim; now explains TTL wait, CacheService.removeAll() with concrete keys, and lowering CACHE_TTL_SECONDS_ (apps-script/README.md)",
+        "14: per-member catch blocks in getAllTasks/getAllSummaries/getChartData now Logger.log the swallowed error so a renamed/deleted tab is visible in Stackdriver (DataService.gs)",
+        "15: readMemberRows_ now throws a clearer error when sheet.getMaxColumns() < 10, naming the expected A..J columns (DataService.gs)"
+      ],
+      "justified_not_fixed": [
+        "3: chartData.billableSplit and chartData.bugsPerMember left in place. They are computed in the same single-pass loop over the member rows (marginal cost ~zero) and exposed for future widgets / external google.script.run callers. A JSDoc note on getChartData now explicitly documents the intent so the fields are not mistaken for dead data."
+      ]
+    }
+  ]
 }
+
