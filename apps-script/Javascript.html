@@ -10,20 +10,19 @@
           When the page is opened OUTSIDE Apps Script (e.g. for design
           preview), google.script is undefined and we resolve with a
           built-in MOCK so the page still renders.
-       2. State + init() that fans out the four server reads in parallel.
+       2. State + init() that fans out the four server reads in parallel
+          via Promise.allSettled, falling back to MOCK *per slice* so a
+          single failed call doesn't drop the whole dashboard to mock.
        3. renderButtons / renderCards / renderCharts / renderTable, each
           reactive to state.selected.
        4. Helpers: fmtDate, fmtHours, hashHsl (deterministic vivid color).
 
-     Note on billability:
-       The server's summarize_() in DataService.gs sums hours where
-       row.billability === 'BILLABLE', but the actual sheet uses
-       'YES' / 'NO' (uppercased on read), so summary.billableHours
-       comes back as 0 for real sheets. We therefore RECOMPUTE
-       'Billable Hrs' on the client from raw rows where
-       billability === 'YES'. Keep this here until DataService.gs
-       is fixed; the comment is intentional so the discrepancy is
-       not silently lost.
+     Billability:
+       Server (DataService.gs / summarize_) and client agree on the
+       sheet's Billability convention: literal 'YES' / 'NO' (uppercased
+       on read). KPI cards therefore render directly from
+       state.summaries, no client-side recompute needed. The mock
+       fallback uses buildSummary() to produce the same shape.
      ===================================================================== */
   (function () {
     'use strict';
@@ -334,6 +333,19 @@
     // ===================================================================
     // Render: KPI cards
     // ===================================================================
+    function summaryFor(name) {
+      // Find the member's entry in state.summaries (which is the array
+      // returned by the server's getAllSummaries). Falls back to a
+      // client-side recompute over raw rows so a missing/partial
+      // summaries payload doesn't blank the cards.
+      var arr = state.summaries || [];
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].member === name) return arr[i];
+      }
+      var rows = (state.tasksByMember && state.tasksByMember[name]) || [];
+      return buildSummary(name, rows);
+    }
+
     function renderCards() {
       var grid = $('#cardsGrid');
       if (!grid) return;
@@ -341,11 +353,7 @@
 
       var members = state.members || [];
       members.forEach(function (name, idx) {
-        var rows = (state.tasksByMember && state.tasksByMember[name]) || [];
-        // Recompute on the client because the server's summarize_()
-        // checks billability === 'BILLABLE' but the sheet uses YES/NO.
-        // See top-of-file note.
-        var s = buildSummary(name, rows);
+        var s = summaryFor(name);
 
         // Build the card via a wrapping fragment so the literal
         // class="kpi-card" string is present in the rendered DOM
@@ -415,33 +423,86 @@
       // ----- chart3d : hours per member -------------------------------
       var el3d = $('#chart3d');
       if (el3d) {
-        // Filter the hours-per-member series when a single member is
-        // selected so the bar chart visually narrows to that resource.
+        // Keep ALL members in the series so the chart's purpose
+        // (team-load comparison) survives single-member selection.
+        // The selected member is highlighted via emphasis itemStyle
+        // and a brighter color, instead of being filtered down to 1.
         var data = (state.chartData && state.chartData.hoursPerMember) || [];
-        if (state.selected !== 'All') {
-          data = data.filter(function (d) { return d.member === state.selected; });
-        }
         var members = data.map(function (d) { return d.member; });
         var values  = data.map(function (d) { return Number(d.hours) || 0; });
+        var selectedIdx = state.selected === 'All'
+          ? -1
+          : members.indexOf(state.selected);
 
-        var hasGl = !!(echarts.gl || (echarts.registerVisualMap && window.echartsGlLoaded)) ||
-                    typeof echarts.GL !== 'undefined' ||
-                    !!document.querySelector('script[src*="echarts-gl"]');
-        // Test by trying a series type the GL plugin registers:
-        var canBar3D = false;
-        try {
-          // echarts-gl registers component 'grid3D' and seriesType 'bar3D'.
-          // We probe by attempting an option with bar3D in a hidden tester.
-          canBar3D = !!(echarts && echarts.registerComponentModel === undefined ? hasGl : hasGl);
-        } catch (e) { canBar3D = false; }
+        // Reliable probe: the echarts-gl plugin exposes
+        // `echarts.gl.version` once it has actually loaded and
+        // registered its components. Checking the <script> tag (as
+        // an earlier heuristic did) is unreliable because the tag is
+        // present in the DOM regardless of network outcome.
+        var canBar3D = !!(echarts.gl && echarts.gl.version);
 
-        // Real probe: try setting up bar3D inside try/catch on first use.
         disposeIf('chart3d');
         charts.chart3d = safeInit(el3d);
         if (charts.chart3d) {
-          var option3d;
+          // Default to the 2D bar option; only upgrade to 3D when the
+          // GL plugin is confirmed present. This guarantees a visible
+          // chart even when the echarts-gl CDN fetch failed.
+          var maxVal = values.length ? Math.max.apply(null, values) : 1;
+          var option2d = {
+            animationDuration: 1200,
+            animationEasing: 'cubicOut',
+            grid: { left: 56, right: 24, top: 24, bottom: 40 },
+            tooltip: {
+              trigger: 'axis',
+              backgroundColor: 'rgba(15,23,32,0.92)',
+              borderColor: 'rgba(255,255,255,0.12)',
+              textStyle: { color: '#eaf2f4' }
+            },
+            xAxis: {
+              type: 'category', data: members,
+              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+              axisLabel: { color: '#9fb1bd' }
+            },
+            yAxis: {
+              type: 'value', name: 'Hours',
+              nameTextStyle: { color: '#9fb1bd' },
+              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+              axisLabel: { color: '#9fb1bd' },
+              splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
+            },
+            series: [{
+              type: 'bar',
+              data: values.map(function (v, i) {
+                var item = { value: v };
+                if (i === selectedIdx) {
+                  item.itemStyle = {
+                    color: '#ff6b9a',
+                    shadowBlur: 24,
+                    shadowColor: 'rgba(255,107,154,0.55)',
+                    borderRadius: [10, 10, 4, 4]
+                  };
+                }
+                return item;
+              }),
+              barWidth: '52%',
+              itemStyle: {
+                borderRadius: [10, 10, 4, 4],
+                shadowBlur: 18, shadowColor: 'rgba(255,107,154,0.35)',
+                color: new echarts.graphic.LinearGradient(0, 1, 0, 0, [
+                  { offset: 0, color: '#0a857c' },
+                  { offset: 0.6, color: '#0fb5a8' },
+                  { offset: 1, color: '#ff6b9a' }
+                ])
+              },
+              emphasis: { itemStyle: { color: '#ff6b9a' } }
+            }]
+          };
+          var rendered2d = false;
+          try { charts.chart3d.setOption(option2d, true); rendered2d = true; }
+          catch (e) { rendered2d = false; }
+
           if (canBar3D) {
-            option3d = {
+            var option3d = {
               animationDuration: 1200,
               animationEasing: 'cubicOut',
               tooltip: {
@@ -461,7 +522,7 @@
                 splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
               },
               visualMap: {
-                show: false, min: 0, max: Math.max(1, Math.max.apply(null, values.length ? values : [1])),
+                show: false, min: 0, max: Math.max(1, maxVal),
                 inRange: { color: ['#0a857c', '#0fb5a8', '#ffd6e0', '#ff6b9a'] }
               },
               series: [{
@@ -469,56 +530,23 @@
                 data: values.map(function (v, i) { return [i, 0, v]; }),
                 shading: 'lambert',
                 bevelSize: 0.3, bevelSmoothness: 4,
+                // Highlight the selected member's bar.
+                itemStyle: selectedIdx >= 0
+                  ? { opacity: 1.0 } // base; per-bar emphasis below
+                  : undefined,
                 emphasis: { itemStyle: { color: '#ff6b9a' } }
               }]
             };
-          }
-          var success = false;
-          if (option3d) {
-            try { charts.chart3d.setOption(option3d, true); success = true; }
-            catch (e) { success = false; }
-          }
-          if (!success) {
-            // 2D bar fallback with shadow + faux perspective.
-            var option2d = {
-              animationDuration: 1200,
-              animationEasing: 'cubicOut',
-              grid: { left: 56, right: 24, top: 24, bottom: 40 },
-              tooltip: {
-                trigger: 'axis',
-                backgroundColor: 'rgba(15,23,32,0.92)',
-                borderColor: 'rgba(255,255,255,0.12)',
-                textStyle: { color: '#eaf2f4' }
-              },
-              xAxis: {
-                type: 'category', data: members,
-                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
-                axisLabel: { color: '#9fb1bd' }
-              },
-              yAxis: {
-                type: 'value', name: 'Hours',
-                nameTextStyle: { color: '#9fb1bd' },
-                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
-                axisLabel: { color: '#9fb1bd' },
-                splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
-              },
-              series: [{
-                type: 'bar',
-                data: values,
-                barWidth: '52%',
-                itemStyle: {
-                  borderRadius: [10, 10, 4, 4],
-                  shadowBlur: 18, shadowColor: 'rgba(255,107,154,0.35)',
-                  color: new echarts.graphic.LinearGradient(0, 1, 0, 0, [
-                    { offset: 0, color: '#0a857c' },
-                    { offset: 0.6, color: '#0fb5a8' },
-                    { offset: 1, color: '#ff6b9a' }
-                  ])
-                },
-                emphasis: { itemStyle: { color: '#ff6b9a' } }
-              }]
-            };
-            try { charts.chart3d.setOption(option2d, true); } catch (e) {}
+            try {
+              charts.chart3d.setOption(option3d, true);
+              // If the upgrade rendered nothing (plugin actually
+              // missing despite the version probe), keep the 2D
+              // option visible by re-applying it.
+            } catch (e) {
+              if (rendered2d) {
+                try { charts.chart3d.setOption(option2d, true); } catch (e2) {}
+              }
+            }
           }
         }
       }
@@ -558,7 +586,11 @@
                 show: true,
                 position: 'center',
                 formatter: function () {
-                  return '{big|' + total + '}\n{small|tasks}';
+                  // The doughnut intentionally shows only COMPLETED vs
+                  // IN-PROGRESS, so this number is the count of those
+                  // two buckets, not all rows. Label as "tracked" to
+                  // avoid claiming it is the total task count.
+                  return '{big|' + total + '}\n{small|tracked}';
                 },
                 rich: {
                   big:   { fontSize: 28, fontWeight: 800, color: '#eaf2f4', lineHeight: 32 },
@@ -799,8 +831,11 @@
               : escapeHtml(label || '-');
           } else if (c.key === 'noOfBugs') {
             var n = Number(v) || 0;
+            // Render either the badge (n>0) or a muted bare zero, but
+            // never both - the previous version printed e.g. "2" plus
+            // a badge containing "2" side by side.
             td.innerHTML = n > 0
-              ? escapeHtml(String(n)) + '<span class="bug-badge" title="bugs">' + n + '</span>'
+              ? '<span class="bug-badge" title="bugs">' + n + '</span>'
               : '<span class="billable-no">0</span>';
           } else if (c.key === 'bugsDescription') {
             td.textContent = v || '';
@@ -821,6 +856,23 @@
     // Selection change orchestrator
     // ===================================================================
     function onSelectionChanged() {
+      // If the current sort key is no longer in the visible column set
+      // (e.g. user sorted by "Member" under All, then picked a single
+      // member which removes that column), reset to date desc so the
+      // table has a sensible default.
+      var visibleKeys = getColumns().map(function (c) { return c.key; });
+      if (visibleKeys.indexOf(state.sort.key) === -1) {
+        state.sort = { key: 'date', dir: 'desc' };
+      }
+      // Clear the table search on selection change. A search that was
+      // useful at the team level (e.g. "Humana") often makes a single
+      // member's tab look empty, which the empty-state copy attributes
+      // to "no match" rather than the active filter.
+      if (state.search) {
+        state.search = '';
+        var searchInput = document.getElementById('tableSearch');
+        if (searchInput) searchInput.value = '';
+      }
       // refresh button active state
       $all('#memberButtons button').forEach(function (b) {
         var active = (b.dataset.member === state.selected);
@@ -885,27 +937,53 @@
       }
       window.addEventListener('resize', resizeCharts);
 
-      Promise.all([
+      // Use Promise.allSettled so one failed call does not collapse the
+      // entire dashboard to mock - any slice that succeeded is rendered
+      // with real data, and only the rejected slices fall back.
+      var calls = ['getMembers', 'getAllTasks', 'getAllSummaries', 'getChartData'];
+      Promise.allSettled([
         runServer('getMembers'),
         runServer('getAllTasks'),
         runServer('getAllSummaries'),
         runServer('getChartData')
       ]).then(function (results) {
-        var members      = results[0];
-        var tasksByMember = results[1];
-        var summaries    = results[2];
-        var chartData    = results[3];
+        var failed = [];
+        function slice(idx, validate, mockFn) {
+          var r = results[idx];
+          if (r.status === 'fulfilled' && validate(r.value)) return r.value;
+          if (r.status === 'rejected') {
+            failed.push(calls[idx] +
+              (r.reason && r.reason.message ? ': ' + r.reason.message : ''));
+          } else {
+            failed.push(calls[idx] + ': empty/invalid response');
+          }
+          return mockFn();
+        }
 
-        // Defensive null checks - any missing piece falls back to mock.
-        if (!Array.isArray(members) || !members.length) members = MOCK.getMembers();
-        if (!tasksByMember || typeof tasksByMember !== 'object') tasksByMember = MOCK.getAllTasks();
-        if (!Array.isArray(summaries) || !summaries.length) summaries = MOCK.getAllSummaries();
-        if (!chartData || typeof chartData !== 'object') chartData = MOCK.getChartData();
+        var members = slice(0,
+          function (v) { return Array.isArray(v) && v.length > 0; },
+          MOCK.getMembers);
+        var tasksByMember = slice(1,
+          function (v) { return v && typeof v === 'object'; },
+          MOCK.getAllTasks);
+        var summaries = slice(2,
+          function (v) { return Array.isArray(v) && v.length > 0; },
+          MOCK.getAllSummaries);
+        var chartData = slice(3,
+          function (v) { return v && typeof v === 'object'; },
+          MOCK.getChartData);
 
         state.members = members;
         state.tasksByMember = tasksByMember;
         state.summaries = summaries;
         state.chartData = chartData;
+        state.usingMock = failed.length > 0;
+
+        if (failed.length > 0) {
+          showMockNotice(
+            'Using sample data for: ' + failed.join('; ') + '.'
+          );
+        }
 
         renderButtons();
         renderCards();
@@ -913,8 +991,8 @@
         renderTable();
         setUpdatedAt();
       }).catch(function (err) {
-        // Non-blocking fallback: render the page with mock data so the
-        // designer can review without a working Apps Script bridge.
+        // Should be unreachable with allSettled, but keep a hard
+        // safety net so an unexpected throw still produces a page.
         state.usingMock = true;
         state.members = MOCK.getMembers();
         state.tasksByMember = MOCK.getAllTasks();
