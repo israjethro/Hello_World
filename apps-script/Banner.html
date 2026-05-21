@@ -1,0 +1,89 @@
+<!--
+  Banner.html - hero partial for the QA - Daily Status dashboard.
+
+  Pure markup (no <html>/<head>) - included by Index.html via the
+  Apps Script scriptlet `<?!= include('Banner') ?>`.
+
+  - Inline SVG illustration only (no remote images, INTEGRATIONS_ONLY safe).
+  - The #memberButtons container is intentionally empty and is populated
+    at runtime by Javascript.html using the result of getMembers().
+-->
+<header class="banner" aria-label="Dashboard banner">
+
+  <div class="banner__bg" aria-hidden="true">
+    <!-- soft animated blobs that match the teal/pink theme -->
+    <span class="blob blob--teal"></span>
+    <span class="blob blob--pink"></span>
+  </div>
+
+  <div class="banner__inner">
+
+    <div class="banner__copy">
+      <p class="banner__eyebrow">QA TEAM</p>
+      <h1 class="banner__title">QA - Daily Status</h1>
+      <p class="banner__tagline">Live view of the team's daily QA work, billability and bug captures.</p>
+
+      <nav class="member-buttons" aria-label="Filter by team member">
+        <div id="memberButtons" role="tablist" aria-label="Team members"></div>
+      </nav>
+    </div>
+
+    <div class="banner__art" aria-hidden="true">
+      <!--
+        Inline SVG illustration. Abstract geometric shapes in the
+        teal/pink palette - no remote image fetch.
+      -->
+      <svg viewBox="0 0 480 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Decorative illustration">
+        <defs>
+          <linearGradient id="bannerTeal" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#0fb5a8" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="#0a857c" stop-opacity="0.85"/>
+          </linearGradient>
+          <linearGradient id="bannerPink" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#ffd6e0" stop-opacity="0.95"/>
+            <stop offset="100%" stop-color="#ff6b9a" stop-opacity="0.85"/>
+          </linearGradient>
+          <linearGradient id="bannerBar" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stop-color="#0fb5a8" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="#ff6b9a" stop-opacity="0.85"/>
+          </linearGradient>
+          <radialGradient id="bannerGlow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0%" stop-color="#ffd6e0" stop-opacity="0.6"/>
+            <stop offset="100%" stop-color="#ffd6e0" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+
+        <!-- glow disc behind the chart -->
+        <circle cx="320" cy="170" r="160" fill="url(#bannerGlow)"/>
+
+        <!-- floating ring -->
+        <circle cx="320" cy="170" r="110" fill="none" stroke="url(#bannerTeal)" stroke-width="3" stroke-opacity="0.55"/>
+        <circle cx="320" cy="170" r="78" fill="none" stroke="url(#bannerPink)" stroke-width="2" stroke-dasharray="4 6" stroke-opacity="0.7"/>
+
+        <!-- mini bar chart -->
+        <g transform="translate(240,210)">
+          <rect x="0"   y="-40" width="22" height="40"  rx="6" fill="url(#bannerBar)" opacity="0.75"/>
+          <rect x="34"  y="-72" width="22" height="72"  rx="6" fill="url(#bannerBar)" opacity="0.85"/>
+          <rect x="68"  y="-58" width="22" height="58"  rx="6" fill="url(#bannerBar)" opacity="0.8"/>
+          <rect x="102" y="-94" width="22" height="94"  rx="6" fill="url(#bannerBar)"/>
+          <rect x="136" y="-50" width="22" height="50"  rx="6" fill="url(#bannerBar)" opacity="0.7"/>
+        </g>
+
+        <!-- doughnut hint -->
+        <g transform="translate(120,120)">
+          <circle r="46" fill="none" stroke="url(#bannerTeal)" stroke-width="14" stroke-opacity="0.95"/>
+          <circle r="46" fill="none" stroke="url(#bannerPink)" stroke-width="14" stroke-dasharray="80 220" stroke-dashoffset="-30" stroke-linecap="round"/>
+        </g>
+
+        <!-- scattered sparkles -->
+        <g fill="#ffd6e0" opacity="0.85">
+          <circle cx="60"  cy="60"  r="3"/>
+          <circle cx="420" cy="50"  r="2"/>
+          <circle cx="440" cy="280" r="3"/>
+          <circle cx="80"  cy="280" r="2"/>
+        </g>
+      </svg>
+    </div>
+
+  </div>
+</header>

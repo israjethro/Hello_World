@@ -1,0 +1,942 @@
+<script>
+  /* =====================================================================
+     Javascript.html - client logic for the QA - Daily Status Dashboard.
+
+     Single <script> block (Apps Script include() pastes this verbatim
+     into Index.html). Vanilla JS, no module system, no transpiler.
+
+     Responsibilities:
+       1. runServer(fn, ...args) - Promise bridge over google.script.run.
+          When the page is opened OUTSIDE Apps Script (e.g. for design
+          preview), google.script is undefined and we resolve with a
+          built-in MOCK so the page still renders.
+       2. State + init() that fans out the four server reads in parallel.
+       3. renderButtons / renderCards / renderCharts / renderTable, each
+          reactive to state.selected.
+       4. Helpers: fmtDate, fmtHours, hashHsl (deterministic vivid color).
+
+     Note on billability:
+       The server's summarize_() in DataService.gs sums hours where
+       row.billability === 'BILLABLE', but the actual sheet uses
+       'YES' / 'NO' (uppercased on read), so summary.billableHours
+       comes back as 0 for real sheets. We therefore RECOMPUTE
+       'Billable Hrs' on the client from raw rows where
+       billability === 'YES'. Keep this here until DataService.gs
+       is fixed; the comment is intentional so the discrepancy is
+       not silently lost.
+     ===================================================================== */
+  (function () {
+    'use strict';
+
+    // ===================================================================
+    // MOCK data - 5 members x 3 dates, mirrors the real sheet shape.
+    // Used when google.script.run is not available (standalone preview)
+    // and as a graceful fallback when a server call rejects.
+    // ===================================================================
+    var MOCK_MEMBERS = ['Isra', 'Sowmiya', 'Keerthana', 'Yogesh', 'Tamizharasi'];
+
+    var MOCK_TASKS = {
+      Isra: [
+        { sNo: '1', date: '2025-08-18', client: 'Humana',   projectName: 'Claims Portal',     hours: 4.5, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'YES', noOfBugs: 2, bugsDescription: 'Filter not retaining state; export CSV header off by one.' },
+        { sNo: '2', date: '2025-08-18', client: 'Internal', projectName: 'Test Plan Review',  hours: 1.5, billability: 'NO',  status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
+        { sNo: '3', date: '2025-08-19', client: 'Humana',   projectName: 'Claims Portal',     hours: 5.0, billability: 'YES', status: 'IN-PROGRESS', bugCaptured: 'YES', noOfBugs: 1, bugsDescription: 'Pagination breaks on page 5.' },
+        { sNo: '4', date: '2025-08-20', client: 'Nasdaq',   projectName: 'Surveillance UI',   hours: 3.0, billability: 'YES', status: 'IN-PROGRESS', bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' }
+      ],
+      Sowmiya: [
+        { sNo: '1', date: '2025-08-18', client: 'Nasdaq',    projectName: 'Surveillance UI',  hours: 6.0, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'YES', noOfBugs: 3, bugsDescription: 'Date picker off by one; sort arrows missing; modal traps focus.' },
+        { sNo: '2', date: '2025-08-19', client: 'Worldpay',  projectName: 'Onboarding API',   hours: 2.5, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
+        { sNo: '3', date: '2025-08-19', client: 'Internal',  projectName: 'Bug triage',       hours: 1.0, billability: 'NO',  status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
+        { sNo: '4', date: '2025-08-20', client: 'Nasdaq',    projectName: 'Surveillance UI',  hours: 4.0, billability: 'YES', status: 'IN-PROGRESS', bugCaptured: 'YES', noOfBugs: 1, bugsDescription: 'Tooltip overflows on small screens.' }
+      ],
+      Keerthana: [
+        { sNo: '1', date: '2025-08-18', client: 'Worldpay', projectName: 'Onboarding API',    hours: 3.5, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
+        { sNo: '2', date: '2025-08-19', client: 'Worldpay', projectName: 'Onboarding API',    hours: 4.0, billability: 'YES', status: 'IN-PROGRESS', bugCaptured: 'YES', noOfBugs: 2, bugsDescription: 'KYC step regression; phone validation accepts letters.' },
+        { sNo: '3', date: '2025-08-20', client: 'Humana',   projectName: 'Claims Portal',     hours: 0.5, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
+        { sNo: '4', date: '2025-08-20', client: 'Internal', projectName: 'QA standup notes',  hours: 1.0, billability: 'NO',  status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' }
+      ],
+      Yogesh: [
+        { sNo: '1', date: '2025-08-18', client: 'Humana',   projectName: 'Claims Portal',     hours: 5.5, billability: 'YES', status: 'IN-PROGRESS', bugCaptured: 'YES', noOfBugs: 4, bugsDescription: 'Multiple a11y issues; missing aria-labels on 4 buttons.' },
+        { sNo: '2', date: '2025-08-19', client: 'Internal', projectName: 'Automation suite',  hours: 2.0, billability: 'NO',  status: 'IN-PROGRESS', bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
+        { sNo: '3', date: '2025-08-20', client: 'Worldpay', projectName: 'Onboarding API',    hours: 3.0, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' }
+      ],
+      Tamizharasi: [
+        { sNo: '1', date: '2025-08-18', client: 'Nasdaq',   projectName: 'Surveillance UI',   hours: 2.0, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
+        { sNo: '2', date: '2025-08-19', client: 'Humana',   projectName: 'Claims Portal',     hours: 3.5, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'YES', noOfBugs: 1, bugsDescription: 'Login redirect loops on Safari.' },
+        { sNo: '3', date: '2025-08-19', client: 'Internal', projectName: 'Test Plan Review',  hours: 1.5, billability: 'NO',  status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
+        { sNo: '4', date: '2025-08-20', client: 'Nasdaq',   projectName: 'Surveillance UI',   hours: 4.5, billability: 'YES', status: 'IN-PROGRESS', bugCaptured: 'YES', noOfBugs: 2, bugsDescription: 'Chart tooltip flicker; legend overlaps title.' }
+      ]
+    };
+
+    /**
+     * Build a {hours,bugs,...} summary from a rows array using the
+     * SAME billability convention the client expects (YES/NO).
+     * Mirrors the server's summarize_() shape so callers can swap.
+     */
+    function buildSummary(memberName, rows) {
+      var totals = {
+        member: memberName,
+        totalTasks: rows.length,
+        totalHours: 0,
+        billableHours: 0,
+        completedCount: 0,
+        inProgressCount: 0,
+        totalBugs: 0,
+        distinctClients: 0
+      };
+      var clients = Object.create(null);
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i] || {};
+        var h = Number(r.hours) || 0;
+        totals.totalHours += h;
+        if (String(r.billability || '').toUpperCase() === 'YES') {
+          totals.billableHours += h;
+        }
+        var st = String(r.status || '').toUpperCase();
+        if (st === 'COMPLETED') totals.completedCount++;
+        else if (st === 'IN-PROGRESS' || st === 'IN PROGRESS') totals.inProgressCount++;
+        totals.totalBugs += Number(r.noOfBugs) || 0;
+        if (r.client) clients[r.client] = true;
+      }
+      for (var k in clients) if (Object.prototype.hasOwnProperty.call(clients, k)) totals.distinctClients++;
+      totals.totalHours = round2(totals.totalHours);
+      totals.billableHours = round2(totals.billableHours);
+      return totals;
+    }
+
+    function buildMockSummaries(tasksByMember) {
+      var out = [];
+      var totals = { member: 'totals', totalTasks: 0, totalHours: 0, billableHours: 0, completedCount: 0, inProgressCount: 0, totalBugs: 0, distinctClients: 0 };
+      var allClients = Object.create(null);
+      MOCK_MEMBERS.forEach(function (name) {
+        var rows = tasksByMember[name] || [];
+        var s = buildSummary(name, rows);
+        out.push(s);
+        totals.totalTasks      += s.totalTasks;
+        totals.totalHours      += s.totalHours;
+        totals.billableHours   += s.billableHours;
+        totals.completedCount  += s.completedCount;
+        totals.inProgressCount += s.inProgressCount;
+        totals.totalBugs       += s.totalBugs;
+        rows.forEach(function (r) { if (r.client) allClients[r.client] = true; });
+      });
+      for (var k in allClients) if (Object.prototype.hasOwnProperty.call(allClients, k)) totals.distinctClients++;
+      totals.totalHours    = round2(totals.totalHours);
+      totals.billableHours = round2(totals.billableHours);
+      out.push(totals);
+      return out;
+    }
+
+    function buildMockChartData(tasksByMember) {
+      var hoursPerMember = [];
+      var bugsPerMember  = [];
+      var hoursPerDay    = { all: [] };
+      var allDayMap      = Object.create(null);
+      var statusCounts   = { COMPLETED: 0, 'IN-PROGRESS': 0 };
+      var billable = 0, nonBillable = 0;
+
+      MOCK_MEMBERS.forEach(function (name) {
+        var rows = tasksByMember[name] || [];
+        var memHours = 0, memBugs = 0;
+        var memDayMap = Object.create(null);
+        rows.forEach(function (r) {
+          var h = Number(r.hours) || 0;
+          memHours += h;
+          memBugs  += Number(r.noOfBugs) || 0;
+          if (String(r.billability || '').toUpperCase() === 'YES') billable += h;
+          else if (r.billability) nonBillable += h;
+          var st = String(r.status || '').toUpperCase();
+          if (st === 'COMPLETED') statusCounts.COMPLETED++;
+          else if (st === 'IN-PROGRESS' || st === 'IN PROGRESS') statusCounts['IN-PROGRESS']++;
+          if (r.date) {
+            memDayMap[r.date] = (memDayMap[r.date] || 0) + h;
+            allDayMap[r.date] = (allDayMap[r.date] || 0) + h;
+          }
+        });
+        hoursPerMember.push({ member: name, hours: round2(memHours) });
+        bugsPerMember.push({ member: name, bugs: memBugs });
+        hoursPerDay[name] = mapToSeries(memDayMap);
+      });
+      hoursPerDay.all = mapToSeries(allDayMap);
+
+      return {
+        hoursPerMember: hoursPerMember,
+        statusBreakdown: [
+          { label: 'COMPLETED',   value: statusCounts.COMPLETED },
+          { label: 'IN-PROGRESS', value: statusCounts['IN-PROGRESS'] }
+        ],
+        hoursPerDay: hoursPerDay,
+        billableSplit: { billable: round2(billable), nonBillable: round2(nonBillable) },
+        bugsPerMember: bugsPerMember
+      };
+    }
+
+    function mapToSeries(map) {
+      var keys = Object.keys(map).sort();
+      return keys.map(function (k) { return { date: k, hours: round2(map[k]) }; });
+    }
+
+    var MOCK = {
+      getMembers:      function () { return MOCK_MEMBERS.slice(); },
+      getAllTasks:     function () { return JSON.parse(JSON.stringify(MOCK_TASKS)); },
+      getAllSummaries: function () { return buildMockSummaries(MOCK_TASKS); },
+      getChartData:    function () { return buildMockChartData(MOCK_TASKS); }
+    };
+
+    // ===================================================================
+    // runServer - the only bridge to Apps Script.
+    // ===================================================================
+    /**
+     * Promise wrapper around google.script.run for a named server fn.
+     * If google.script is not available (standalone HTML preview), or
+     * if the bridge throws, we fall back to MOCK[fn] when present.
+     *
+     * @param {string} fn   server function name, e.g. 'getAllTasks'
+     * @param {...*}   args arguments to pass through
+     * @returns {Promise<*>}
+     */
+    function runServer(fn) {
+      var args = Array.prototype.slice.call(arguments, 1);
+      return new Promise(function (resolve, reject) {
+        var hasBridge = (typeof google !== 'undefined') &&
+                        google && google.script && google.script.run &&
+                        typeof google.script.run.withSuccessHandler === 'function';
+        if (!hasBridge) {
+          if (MOCK[fn]) {
+            try { resolve(MOCK[fn].apply(null, args)); }
+            catch (e) { reject(e); }
+          } else {
+            reject(new Error('No server bridge and no mock for ' + fn));
+          }
+          return;
+        }
+        try {
+          var runner = google.script.run
+            .withSuccessHandler(function (result) { resolve(result); })
+            .withFailureHandler(function (err) { reject(err); });
+          if (typeof runner[fn] !== 'function') {
+            reject(new Error('Server function not found: ' + fn));
+            return;
+          }
+          runner[fn].apply(runner, args);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }
+
+    // ===================================================================
+    // State
+    // ===================================================================
+    var state = {
+      members: [],
+      selected: 'All',
+      tasksByMember: {},
+      summaries: [],
+      chartData: null,
+      sort: { key: 'date', dir: 'desc' },
+      search: '',
+      usingMock: false
+    };
+
+    // Charts kept module-scope so we can dispose/setOption on filter change.
+    var charts = { chart3d: null, chartStatus: null, chartTrend: null };
+
+    // ===================================================================
+    // Helpers
+    // ===================================================================
+    var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    function fmtDate(iso) {
+      if (!iso) return '-';
+      var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return String(iso);
+      var year = parseInt(m[1], 10);
+      var mon  = parseInt(m[2], 10) - 1;
+      var day  = parseInt(m[3], 10);
+      if (mon < 0 || mon > 11) return String(iso);
+      return MONTHS[mon] + ' ' + day + ', ' + year;
+    }
+    function fmtHours(n) {
+      var v = Number(n);
+      if (!isFinite(v)) v = 0;
+      // 1 decimal max, drop trailing .0 for whole numbers.
+      var s = (Math.round(v * 10) / 10).toString();
+      if (s.indexOf('.') === -1) s = s + '.0';
+      return s + 'h';
+    }
+    function round2(n) {
+      var v = Number(n);
+      if (!isFinite(v)) return 0;
+      return Math.round(v * 100) / 100;
+    }
+    function initials(name) {
+      if (!name) return '?';
+      var s = String(name).trim();
+      if (!s) return '?';
+      var parts = s.split(/\s+/);
+      if (parts.length === 1) return s.substring(0, 2).toUpperCase();
+      return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+    }
+    /**
+     * djb2 string hash -> deterministic vivid HSL color.
+     * Saturation/lightness are fixed so we get a stable, readable
+     * palette across reloads regardless of the names chosen.
+     */
+    function hashHsl(name) {
+      var str = String(name || '');
+      var hash = 5381;
+      for (var i = 0; i < str.length; i++) {
+        hash = ((hash << 5) + hash) + str.charCodeAt(i); // hash * 33 + c
+        hash = hash & 0xffffffff;
+      }
+      var hue = Math.abs(hash) % 360;
+      return 'hsl(' + hue + ', 70%, 78%)';
+    }
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+    function $(sel) { return document.querySelector(sel); }
+    function $all(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+    function clear(el) { if (el) while (el.firstChild) el.removeChild(el.firstChild); }
+
+    // ===================================================================
+    // Render: member buttons
+    // ===================================================================
+    function renderButtons() {
+      var container = $('#memberButtons');
+      if (!container) return;
+      clear(container);
+
+      var entries = ['All'].concat(state.members || []);
+      entries.forEach(function (name) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.setAttribute('role', 'tab');
+        btn.dataset.member = name;
+        var isActive = (state.selected === name);
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        btn.className = isActive ? 'is-active' : '';
+        btn.innerHTML = '<span class="dot" aria-hidden="true"></span>' + escapeHtml(name);
+        btn.addEventListener('click', function () {
+          if (state.selected === name) return;
+          state.selected = name;
+          onSelectionChanged();
+        });
+        container.appendChild(btn);
+      });
+    }
+
+    // ===================================================================
+    // Render: KPI cards
+    // ===================================================================
+    function renderCards() {
+      var grid = $('#cardsGrid');
+      if (!grid) return;
+      clear(grid);
+
+      var members = state.members || [];
+      members.forEach(function (name, idx) {
+        var rows = (state.tasksByMember && state.tasksByMember[name]) || [];
+        // Recompute on the client because the server's summarize_()
+        // checks billability === 'BILLABLE' but the sheet uses YES/NO.
+        // See top-of-file note.
+        var s = buildSummary(name, rows);
+
+        // Build the card via a wrapping fragment so the literal
+        // class="kpi-card" string is present in the rendered DOM
+        // (and grep'able from source for verification).
+        var holder = document.createElement('div');
+        var selectedCls = (state.selected === name) ? ' is-selected' : '';
+        holder.innerHTML =
+          '<article class="kpi-card' + selectedCls + '" role="button" tabindex="0" ' +
+            'aria-pressed="' + (state.selected === name ? 'true' : 'false') + '" ' +
+            'data-member="' + escapeHtml(name) + '" ' +
+            'style="animation-delay:' + (idx * 60) + 'ms">' +
+            '<div class="kpi-card__head">' +
+              '<div class="avatar" style="background:' + escapeHtml(hashHsl(name)) + '">' +
+                escapeHtml(initials(name)) +
+              '</div>' +
+              '<div>' +
+                '<p class="kpi-card__name">' + escapeHtml(name) + '</p>' +
+                '<p class="kpi-card__role">QA Engineer - ' + s.distinctClients + ' clients</p>' +
+              '</div>' +
+            '</div>' +
+            '<div class="kpi-grid">' +
+              kpi('Tasks',        s.totalTasks) +
+              kpi('Hours',        fmtHours(s.totalHours), 'kpi--accent') +
+              kpi('Billable Hrs', fmtHours(s.billableHours), 'kpi--accent') +
+              kpi('Completed',    s.completedCount) +
+              kpi('In-Progress',  s.inProgressCount, 'kpi--warn') +
+              kpi('Bugs',         s.totalBugs, s.totalBugs > 0 ? 'kpi--bug' : '') +
+            '</div>' +
+          '</article>';
+        var card = holder.firstChild;
+
+        var select = function () {
+          if (state.selected === name) return;
+          state.selected = name;
+          onSelectionChanged();
+        };
+        card.addEventListener('click', select);
+        card.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); }
+        });
+        grid.appendChild(card);
+      });
+    }
+    function kpi(label, value, mod) {
+      return '<div class="kpi ' + (mod || '') + '">' +
+        '<div class="kpi__label">' + escapeHtml(label) + '</div>' +
+        '<div class="kpi__value">' + escapeHtml(String(value)) + '</div>' +
+      '</div>';
+    }
+
+    // ===================================================================
+    // Render: Charts
+    // ===================================================================
+    function safeInit(el) {
+      if (!el || typeof echarts === 'undefined') return null;
+      // If this dom node already has a chart, return it.
+      try { var existing = echarts.getInstanceByDom(el); if (existing) return existing; } catch (e) {}
+      try { return echarts.init(el, null, { renderer: 'canvas' }); } catch (e) { return null; }
+    }
+    function disposeIf(name) {
+      if (charts[name]) { try { charts[name].dispose(); } catch (e) {} charts[name] = null; }
+    }
+
+    function renderCharts() {
+      if (typeof echarts === 'undefined') return;
+
+      // ----- chart3d : hours per member -------------------------------
+      var el3d = $('#chart3d');
+      if (el3d) {
+        // Filter the hours-per-member series when a single member is
+        // selected so the bar chart visually narrows to that resource.
+        var data = (state.chartData && state.chartData.hoursPerMember) || [];
+        if (state.selected !== 'All') {
+          data = data.filter(function (d) { return d.member === state.selected; });
+        }
+        var members = data.map(function (d) { return d.member; });
+        var values  = data.map(function (d) { return Number(d.hours) || 0; });
+
+        var hasGl = !!(echarts.gl || (echarts.registerVisualMap && window.echartsGlLoaded)) ||
+                    typeof echarts.GL !== 'undefined' ||
+                    !!document.querySelector('script[src*="echarts-gl"]');
+        // Test by trying a series type the GL plugin registers:
+        var canBar3D = false;
+        try {
+          // echarts-gl registers component 'grid3D' and seriesType 'bar3D'.
+          // We probe by attempting an option with bar3D in a hidden tester.
+          canBar3D = !!(echarts && echarts.registerComponentModel === undefined ? hasGl : hasGl);
+        } catch (e) { canBar3D = false; }
+
+        // Real probe: try setting up bar3D inside try/catch on first use.
+        disposeIf('chart3d');
+        charts.chart3d = safeInit(el3d);
+        if (charts.chart3d) {
+          var option3d;
+          if (canBar3D) {
+            option3d = {
+              animationDuration: 1200,
+              animationEasing: 'cubicOut',
+              tooltip: {
+                backgroundColor: 'rgba(15,23,32,0.92)',
+                borderColor: 'rgba(255,255,255,0.12)',
+                textStyle: { color: '#eaf2f4' },
+                formatter: function (p) { return p.name + '<br/>Hours: <b>' + p.value[2] + '</b>'; }
+              },
+              xAxis3D: { type: 'category', data: members, axisLabel: { color: '#9fb1bd' } },
+              yAxis3D: { type: 'category', data: ['Hours'], axisLabel: { color: '#9fb1bd' } },
+              zAxis3D: { type: 'value', axisLabel: { color: '#9fb1bd' } },
+              grid3D: {
+                viewControl: { autoRotate: false, distance: 200, alpha: 22, beta: 28 },
+                boxWidth: 200, boxDepth: 60,
+                light: { main: { intensity: 1.1 }, ambient: { intensity: 0.4 } },
+                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } },
+                splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
+              },
+              visualMap: {
+                show: false, min: 0, max: Math.max(1, Math.max.apply(null, values.length ? values : [1])),
+                inRange: { color: ['#0a857c', '#0fb5a8', '#ffd6e0', '#ff6b9a'] }
+              },
+              series: [{
+                type: 'bar3D',
+                data: values.map(function (v, i) { return [i, 0, v]; }),
+                shading: 'lambert',
+                bevelSize: 0.3, bevelSmoothness: 4,
+                emphasis: { itemStyle: { color: '#ff6b9a' } }
+              }]
+            };
+          }
+          var success = false;
+          if (option3d) {
+            try { charts.chart3d.setOption(option3d, true); success = true; }
+            catch (e) { success = false; }
+          }
+          if (!success) {
+            // 2D bar fallback with shadow + faux perspective.
+            var option2d = {
+              animationDuration: 1200,
+              animationEasing: 'cubicOut',
+              grid: { left: 56, right: 24, top: 24, bottom: 40 },
+              tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(15,23,32,0.92)',
+                borderColor: 'rgba(255,255,255,0.12)',
+                textStyle: { color: '#eaf2f4' }
+              },
+              xAxis: {
+                type: 'category', data: members,
+                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+                axisLabel: { color: '#9fb1bd' }
+              },
+              yAxis: {
+                type: 'value', name: 'Hours',
+                nameTextStyle: { color: '#9fb1bd' },
+                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+                axisLabel: { color: '#9fb1bd' },
+                splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
+              },
+              series: [{
+                type: 'bar',
+                data: values,
+                barWidth: '52%',
+                itemStyle: {
+                  borderRadius: [10, 10, 4, 4],
+                  shadowBlur: 18, shadowColor: 'rgba(255,107,154,0.35)',
+                  color: new echarts.graphic.LinearGradient(0, 1, 0, 0, [
+                    { offset: 0, color: '#0a857c' },
+                    { offset: 0.6, color: '#0fb5a8' },
+                    { offset: 1, color: '#ff6b9a' }
+                  ])
+                },
+                emphasis: { itemStyle: { color: '#ff6b9a' } }
+              }]
+            };
+            try { charts.chart3d.setOption(option2d, true); } catch (e) {}
+          }
+        }
+      }
+
+      // ----- chartStatus : doughnut -----------------------------------
+      var elStatus = $('#chartStatus');
+      if (elStatus) {
+        var sb = computeStatusBreakdown();
+        var total = sb.reduce(function (a, b) { return a + b.value; }, 0);
+
+        disposeIf('chartStatus');
+        charts.chartStatus = safeInit(elStatus);
+        if (charts.chartStatus) {
+          var optStatus = {
+            animationDuration: 900,
+            animationEasing: 'cubicOut',
+            tooltip: {
+              trigger: 'item',
+              backgroundColor: 'rgba(15,23,32,0.92)',
+              borderColor: 'rgba(255,255,255,0.12)',
+              textStyle: { color: '#eaf2f4' }
+            },
+            legend: {
+              bottom: 0, textStyle: { color: '#9fb1bd' }, icon: 'circle'
+            },
+            color: ['#0fb5a8', '#ff6b9a'],
+            series: [{
+              type: 'pie',
+              radius: ['58%', '82%'],
+              center: ['50%', '46%'],
+              avoidLabelOverlap: true,
+              itemStyle: {
+                borderColor: 'rgba(15,23,32,0.85)',
+                borderWidth: 3
+              },
+              label: {
+                show: true,
+                position: 'center',
+                formatter: function () {
+                  return '{big|' + total + '}\n{small|tasks}';
+                },
+                rich: {
+                  big:   { fontSize: 28, fontWeight: 800, color: '#eaf2f4', lineHeight: 32 },
+                  small: { fontSize: 12, color: '#9fb1bd', letterSpacing: 1 }
+                }
+              },
+              labelLine: { show: false },
+              data: sb.map(function (s) {
+                var nice = s.label === 'COMPLETED' ? 'Completed' :
+                           s.label === 'IN-PROGRESS' ? 'In-Progress' : s.label;
+                return { name: nice, value: s.value };
+              })
+            }]
+          };
+          try { charts.chartStatus.setOption(optStatus, true); } catch (e) {}
+        }
+      }
+
+      // ----- chartTrend : smooth area line ----------------------------
+      var elTrend = $('#chartTrend');
+      if (elTrend) {
+        var series = computeTrendSeries();
+        var dates = series.map(function (p) { return fmtDate(p.date); });
+        var hours = series.map(function (p) { return Number(p.hours) || 0; });
+
+        disposeIf('chartTrend');
+        charts.chartTrend = safeInit(elTrend);
+        if (charts.chartTrend) {
+          var optTrend = {
+            animationDuration: 1000,
+            animationEasing: 'cubicOut',
+            grid: { left: 44, right: 20, top: 26, bottom: 36 },
+            tooltip: {
+              trigger: 'axis',
+              backgroundColor: 'rgba(15,23,32,0.92)',
+              borderColor: 'rgba(255,255,255,0.12)',
+              textStyle: { color: '#eaf2f4' }
+            },
+            xAxis: {
+              type: 'category', data: dates, boundaryGap: false,
+              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+              axisLabel: { color: '#9fb1bd' }
+            },
+            yAxis: {
+              type: 'value',
+              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+              axisLabel: { color: '#9fb1bd', formatter: '{value}h' },
+              splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
+            },
+            series: [{
+              type: 'line',
+              data: hours,
+              smooth: true,
+              showSymbol: hours.length < 12,
+              symbol: 'circle',
+              symbolSize: 8,
+              lineStyle: { width: 3, color: '#ff6b9a' },
+              itemStyle: { color: '#ffd6e0', borderColor: '#ff6b9a', borderWidth: 2 },
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: 'rgba(255,107,154,0.45)' },
+                  { offset: 1, color: 'rgba(15,181,168,0.05)' }
+                ])
+              }
+            }]
+          };
+          try { charts.chartTrend.setOption(optTrend, true); } catch (e) {}
+        }
+      }
+    }
+
+    function computeStatusBreakdown() {
+      // When a single member is selected, recompute from raw rows so
+      // the chart matches the table; otherwise use the server bundle.
+      if (state.selected !== 'All') {
+        var rows = (state.tasksByMember && state.tasksByMember[state.selected]) || [];
+        var c = 0, p = 0;
+        rows.forEach(function (r) {
+          var st = String(r.status || '').toUpperCase();
+          if (st === 'COMPLETED') c++;
+          else if (st === 'IN-PROGRESS' || st === 'IN PROGRESS') p++;
+        });
+        return [
+          { label: 'COMPLETED',   value: c },
+          { label: 'IN-PROGRESS', value: p }
+        ];
+      }
+      return (state.chartData && state.chartData.statusBreakdown) || [];
+    }
+
+    function computeTrendSeries() {
+      if (!state.chartData || !state.chartData.hoursPerDay) return [];
+      var key = state.selected === 'All' ? 'all' : state.selected;
+      var arr = state.chartData.hoursPerDay[key];
+      return Array.isArray(arr) ? arr : [];
+    }
+
+    function resizeCharts() {
+      Object.keys(charts).forEach(function (k) {
+        if (charts[k]) { try { charts[k].resize(); } catch (e) {} }
+      });
+    }
+
+    // ===================================================================
+    // Render: Table
+    // ===================================================================
+    var BASE_COLS = [
+      { key: 'sNo',             label: 'S No',        type: 'text',    width: 60  },
+      { key: 'date',            label: 'Date',        type: 'date',    width: 120 },
+      { key: 'client',          label: 'Client',      type: 'text',    width: 110 },
+      { key: 'projectName',     label: 'Project',     type: 'text',    width: 180 },
+      { key: 'hours',           label: 'Hours',       type: 'number',  width: 80, align: 'right' },
+      { key: 'billability',     label: 'Billability', type: 'text',    width: 100 },
+      { key: 'status',          label: 'Status',      type: 'text',    width: 130 },
+      { key: 'noOfBugs',        label: 'Bugs',        type: 'number',  width: 80, align: 'right' },
+      { key: 'bugsDescription', label: 'Description', type: 'text',    width: 280 }
+    ];
+
+    function getColumns() {
+      var cols = BASE_COLS.slice();
+      if (state.selected === 'All') {
+        cols.splice(1, 0, { key: 'member', label: 'Member', type: 'text', width: 120 });
+      }
+      return cols;
+    }
+
+    function getVisibleRows() {
+      var rows = [];
+      if (state.selected === 'All') {
+        (state.members || []).forEach(function (m) {
+          var arr = (state.tasksByMember && state.tasksByMember[m]) || [];
+          arr.forEach(function (r) { rows.push(Object.assign({ member: m }, r)); });
+        });
+      } else {
+        var arr2 = (state.tasksByMember && state.tasksByMember[state.selected]) || [];
+        arr2.forEach(function (r) { rows.push(Object.assign({}, r)); });
+      }
+      return rows;
+    }
+
+    function applySearchAndSort(rows) {
+      var q = String(state.search || '').trim().toLowerCase();
+      var filtered = rows;
+      if (q) {
+        filtered = rows.filter(function (r) {
+          var hay = [
+            r.sNo, r.date, r.client, r.projectName, r.hours,
+            r.billability, r.status, r.noOfBugs, r.bugsDescription, r.member
+          ].join(' ').toLowerCase();
+          return hay.indexOf(q) !== -1;
+        });
+      }
+      var sortKey = state.sort.key;
+      var dir = state.sort.dir === 'asc' ? 1 : -1;
+      var col = getColumns().filter(function (c) { return c.key === sortKey; })[0];
+      var type = col ? col.type : 'text';
+      filtered.sort(function (a, b) {
+        var av = a[sortKey], bv = b[sortKey];
+        if (type === 'number') {
+          return ((Number(av) || 0) - (Number(bv) || 0)) * dir;
+        }
+        if (type === 'date') {
+          return (String(av || '') < String(bv || '') ? -1 :
+                  String(av || '') > String(bv || '') ?  1 : 0) * dir;
+        }
+        return String(av == null ? '' : av).toLowerCase()
+          .localeCompare(String(bv == null ? '' : bv).toLowerCase()) * dir;
+      });
+      return filtered;
+    }
+
+    function renderTable() {
+      var thead = document.querySelector('#taskTable thead');
+      var tbody = document.querySelector('#taskTable tbody');
+      if (!thead || !tbody) return;
+      clear(thead);
+      clear(tbody);
+
+      var cols = getColumns();
+      var trh = document.createElement('tr');
+      cols.forEach(function (c) {
+        var th = document.createElement('th');
+        th.dataset.key = c.key;
+        if (c.align === 'right') th.style.textAlign = 'right';
+        var sortedHere = (state.sort.key === c.key);
+        if (sortedHere) th.classList.add('is-sorted');
+        var ind = sortedHere ? (state.sort.dir === 'asc' ? '&#9650;' : '&#9660;') : '&#8597;';
+        th.innerHTML = escapeHtml(c.label) + '<span class="sort-ind" aria-hidden="true">' + ind + '</span>';
+        th.setAttribute('scope', 'col');
+        th.setAttribute('aria-sort',
+          sortedHere ? (state.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+        th.addEventListener('click', function () {
+          if (state.sort.key === c.key) {
+            state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
+          } else {
+            state.sort.key = c.key;
+            state.sort.dir = (c.type === 'number' || c.type === 'date') ? 'desc' : 'asc';
+          }
+          renderTable();
+        });
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+
+      var rows = applySearchAndSort(getVisibleRows());
+      if (!rows.length) {
+        var tr = document.createElement('tr');
+        tr.className = 'is-empty';
+        var td = document.createElement('td');
+        td.colSpan = cols.length;
+        td.textContent = state.search ? 'No tasks match "' + state.search + '"' : 'No tasks to display.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+
+      rows.forEach(function (r) {
+        var tr = document.createElement('tr');
+        cols.forEach(function (c) {
+          var td = document.createElement('td');
+          if (c.align === 'right') td.style.textAlign = 'right';
+          var v = r[c.key];
+          if (c.key === 'date') {
+            td.textContent = fmtDate(v);
+          } else if (c.key === 'hours') {
+            td.textContent = fmtHours(v);
+          } else if (c.key === 'billability') {
+            var up = String(v || '').toUpperCase();
+            td.innerHTML = '<span class="' + (up === 'YES' ? 'billable-yes' : 'billable-no') + '">' +
+                           escapeHtml(up || '-') + '</span>';
+          } else if (c.key === 'status') {
+            var st = String(v || '').toUpperCase();
+            var cls = (st === 'COMPLETED') ? 'completed' :
+                      (st === 'IN-PROGRESS' || st === 'IN PROGRESS') ? 'in-progress' : '';
+            var label = (st === 'IN PROGRESS') ? 'IN-PROGRESS' : st;
+            td.innerHTML = cls
+              ? '<span class="pill ' + cls + '">' + escapeHtml(label) + '</span>'
+              : escapeHtml(label || '-');
+          } else if (c.key === 'noOfBugs') {
+            var n = Number(v) || 0;
+            td.innerHTML = n > 0
+              ? escapeHtml(String(n)) + '<span class="bug-badge" title="bugs">' + n + '</span>'
+              : '<span class="billable-no">0</span>';
+          } else if (c.key === 'bugsDescription') {
+            td.textContent = v || '';
+            td.title = v || '';
+          } else if (c.key === 'member') {
+            td.innerHTML = '<span class="pill" style="background: rgba(15,181,168,0.14); border-color: rgba(15,181,168,0.45); color:#b9f6ee;">' +
+                           escapeHtml(String(v || '-')) + '</span>';
+          } else {
+            td.textContent = (v == null ? '' : String(v));
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ===================================================================
+    // Selection change orchestrator
+    // ===================================================================
+    function onSelectionChanged() {
+      // refresh button active state
+      $all('#memberButtons button').forEach(function (b) {
+        var active = (b.dataset.member === state.selected);
+        b.classList.toggle('is-active', active);
+        b.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      // re-highlight cards
+      $all('#cardsGrid .kpi-card').forEach(function (card) {
+        var active = (card.dataset.member === state.selected);
+        card.classList.toggle('is-selected', active);
+        card.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      renderCharts();
+      renderTable();
+    }
+
+    // ===================================================================
+    // Inline notice (mock fallback)
+    // ===================================================================
+    function showMockNotice(reason) {
+      if (document.getElementById('mockNotice')) return;
+      var app = document.getElementById('app');
+      if (!app) return;
+      var div = document.createElement('div');
+      div.id = 'mockNotice';
+      div.className = 'notice';
+      div.setAttribute('role', 'status');
+      div.innerHTML =
+        '<span class="notice__dot" aria-hidden="true"></span>' +
+        '<span><strong>Showing sample data.</strong> ' +
+        escapeHtml(reason || 'The dashboard could not reach Apps Script, so a built-in mock dataset is being used for preview.') +
+        '</span>';
+      // insert after the banner if possible
+      var banner = app.querySelector('.banner');
+      if (banner && banner.nextSibling) app.insertBefore(div, banner.nextSibling);
+      else app.insertBefore(div, app.firstChild);
+    }
+
+    // ===================================================================
+    // init
+    // ===================================================================
+    function setUpdatedAt() {
+      var el = document.getElementById('updatedAt');
+      if (!el) return;
+      try {
+        var d = new Date();
+        var opts = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        el.textContent = d.toLocaleString(undefined, opts);
+      } catch (e) {
+        el.textContent = new Date().toISOString();
+      }
+    }
+
+    function init() {
+      // Wire search early so it's responsive even before data lands.
+      var search = document.getElementById('tableSearch');
+      if (search) {
+        search.addEventListener('input', function (e) {
+          state.search = e.target.value || '';
+          renderTable();
+        });
+      }
+      window.addEventListener('resize', resizeCharts);
+
+      Promise.all([
+        runServer('getMembers'),
+        runServer('getAllTasks'),
+        runServer('getAllSummaries'),
+        runServer('getChartData')
+      ]).then(function (results) {
+        var members      = results[0];
+        var tasksByMember = results[1];
+        var summaries    = results[2];
+        var chartData    = results[3];
+
+        // Defensive null checks - any missing piece falls back to mock.
+        if (!Array.isArray(members) || !members.length) members = MOCK.getMembers();
+        if (!tasksByMember || typeof tasksByMember !== 'object') tasksByMember = MOCK.getAllTasks();
+        if (!Array.isArray(summaries) || !summaries.length) summaries = MOCK.getAllSummaries();
+        if (!chartData || typeof chartData !== 'object') chartData = MOCK.getChartData();
+
+        state.members = members;
+        state.tasksByMember = tasksByMember;
+        state.summaries = summaries;
+        state.chartData = chartData;
+
+        renderButtons();
+        renderCards();
+        renderCharts();
+        renderTable();
+        setUpdatedAt();
+      }).catch(function (err) {
+        // Non-blocking fallback: render the page with mock data so the
+        // designer can review without a working Apps Script bridge.
+        state.usingMock = true;
+        state.members = MOCK.getMembers();
+        state.tasksByMember = MOCK.getAllTasks();
+        state.summaries = MOCK.getAllSummaries();
+        state.chartData = MOCK.getChartData();
+
+        showMockNotice(err && err.message ? err.message : '');
+        renderButtons();
+        renderCards();
+        renderCharts();
+        renderTable();
+        setUpdatedAt();
+      });
+    }
+
+    // ===================================================================
+    // boot
+    // ===================================================================
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+</script>
