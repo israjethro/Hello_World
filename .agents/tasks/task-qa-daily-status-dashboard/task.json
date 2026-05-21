@@ -35,6 +35,18 @@
       "justified_not_fixed": [
         "3: chartData.billableSplit and chartData.bugsPerMember left in place. They are computed in the same single-pass loop over the member rows (marginal cost ~zero) and exposed for future widgets / external google.script.run callers. A JSDoc note on getChartData now explicitly documents the intent so the fields are not mistaken for dead data."
       ]
+    },
+    {
+      "version": "v2",
+      "review_file": ".agents/tasks/task-qa-daily-status-dashboard/2026-05-21-104624-review.md",
+      "issue_count": 4,
+      "fixed": [
+        "1 (confirmed): 3D-bar selection highlight - the bar3D series now uses per-data-point {value:[i,0,v], itemStyle:{color:'#ff6b9a'}} when i===selectedIdx, mirroring the 2D fallback. The misleading '// per-bar emphasis below' comment is gone (Javascript.html, commit 5d00459)",
+        "2 (likely): partial-mock notice now names the affected PANELS ('member buttons', 'task table', 'KPI cards', 'charts (bar / status / trend)') alongside the failed server fn names, so a non-developer reader can see which parts of the dashboard are sample vs real (Javascript.html, commit 5d00459)",
+        "3 (likely): getChartData billable split now reconciles - anything not literally 'YES' rolls into nonBillable so billable + nonBillable === totalHours regardless of typos / blanks / 'N/A' in the sheet. Matches summarize_'s implicit 'everything else is not billable' treatment. The mock builder in Javascript.html mirrors the same rule and the JSDoc on billableSplit now states the reconciliation guarantee explicitly (DataService.gs, Javascript.html, commit 5d00459)",
+        "4 (possible): MOCK_MEMBERS / MEMBER_SHEETS hand-coupling - when getMembers fails alone, init() derives state.members from Object.keys(state.tasksByMember). MOCK_MEMBERS is the absolute last resort, used only when both slices fail. Cross-reference comments now live on MOCK_MEMBERS in Javascript.html and on MEMBER_SHEETS in Code.gs (Javascript.html commit 5d00459, Code.gs commit 3e7f793)"
+      ],
+      "justified_not_fixed": []
     }
   ]
 }
