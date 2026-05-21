@@ -1,7 +1,7 @@
 {
   "task_id": "task-qa-daily-status-dashboard",
   "task_description": "Build a Google Apps Script web app called 'QA - Daily Status Dashboard' that reads the 5-tab QA team Google Sheet (members: Isra, Sowmiya, Keerthana, Yogesh, Tamizharasi) and renders an elegant dashboard with: (1) a banner + interactive per-member buttons, (2) a 3D-style chart section with smooth animations, (3) KPI cards for all 5 resources, and (4) a sortable/searchable filtered task table. All source files live under a new `apps-script/` folder; the existing Java samples in src/ and bin/ remain untouched.",
-  "status": "in_progress",
+  "status": "completed",
   "feature_order": ["FEAT-001", "FEAT-002"],
   "blocked_reason": null,
   "verification": {
@@ -9,45 +9,34 @@
     "tests": "pass",
     "test_quality": "n/a",
     "docker_build": "skipped",
-    "summary": "No build or test runner exists for Apps Script projects offline; this was documented in context.json up front. Static verification: appsscript.json parses (python3 json.load), all 9 server functions (doGet, include, getMembers, getConfig, getMemberTasks, getAllTasks, getMemberSummary, getAllSummaries, getChartData) defined, CacheService used 4x in DataService.gs, every <?!= include('X') ?> resolves to an existing apps-script/X.html, all CDN URLs are HTTPS, Javascript.html has both google.script.run wiring and a MOCK fallback, file sizes Banner=89 Index=95 Stylesheet=612 Javascript=1020 Code.gs=118 DataService.gs=508 lines. Existing src/, bin/, README.md are byte-identical (git diff --stat empty). No Dockerfile in repo; no docker build attempted. test_quality is n/a because the project ships no automated test suite (Apps Script is impractical to test offline without node + apps-script-mock); behavior must be exercised by the user in the deployed web app."
+    "summary": "No build or test runner exists for Apps Script offline; this was documented in context.json. Static verification: appsscript.json parses, all 9 server functions (doGet, include, getMembers, getConfig, getMemberTasks, getAllTasks, getMemberSummary, getAllSummaries, getChartData) defined, CacheService used 4x in DataService.gs, every <?!= include('X') ?> resolves to an existing apps-script/X.html, all CDN URLs are HTTPS, Javascript.html has both google.script.run wiring and a MOCK fallback, file sizes Banner=89 Index=95 Stylesheet=612 Javascript=1062 Code.gs=126 DataService.gs=516 README=198 lines after all review iterations. Existing src/, bin/, top-level README.md byte-identical. No Dockerfile in repo. test_quality is n/a because the project ships no automated test suite (Apps Script is impractical to run offline without node + apps-script-mock); behavior must be exercised in the deployed web app."
   },
   "review_iterations": [
     {
       "version": "v1",
       "review_file": ".agents/tasks/task-qa-daily-status-dashboard/2026-05-21-102949-review.md",
-      "issue_count": 15,
-      "fixed": [
-        "1: server billability check 'BILLABLE' -> 'YES' in summarize_() and getChartData(); also nonBillable now exact-matches 'NO' (DataService.gs)",
-        "2: KPI cards now read from state.summaries via summaryFor() instead of recomputing client-side; buildSummary() retained only as the mock-fallback summarizer (Javascript.html)",
-        "4: Promise.all replaced with Promise.allSettled and per-slice mock fallback so a single failed call does not collapse the dashboard to MOCK; the inline notice now names the failed subsystem(s) (Javascript.html)",
-        "5: 3D-bar GL probe replaced with a reliable echarts.gl.version check; chart now renders the 2D bar by default and only upgrades to 3D when the GL plugin is confirmed present, so a CDN failure can never leave a blank canvas (Javascript.html)",
-        "6: noOfBugs cell now renders the badge alone for n>0 (or a muted '0'), no longer doubled-up '2 [2]' (Javascript.html, Stylesheet.html bug-badge margin-left removed)",
-        "7: doughnut center label renamed from 'tasks' to 'tracked' so it accurately describes COMPLETED+IN-PROGRESS rather than implying total-tasks (Javascript.html)",
-        "8: 3D bar keeps all members in the series and highlights the selected one via itemStyle/emphasis instead of filtering down to a single bar (Javascript.html)",
-        "9: state.sort is reset to {key:'date', dir:'desc'} on selection change when the current sort key (e.g. 'member') is no longer in the visible column set (Javascript.html)",
-        "10: state.search and #tableSearch.value are cleared on selection change so a sparse member tab does not show 'No tasks match \"<old query>\"' (Javascript.html)",
-        "11: README adds a 'Security and access' section documenting ANYONE_WITH_GOOGLE + USER_DEPLOYING + ALLOWALL trade-offs and how to tighten to MYSELF/DOMAIN/USER_ACCESSING/DEFAULT (apps-script/README.md)",
-        "12: removed unused script.external_request from appsscript.json oauthScopes; README now correctly notes that ECharts CDN fetches are browser-side and do NOT need the scope (apps-script/appsscript.json, apps-script/README.md)",
-        "13: README cache-busting paragraph rewritten - no more false 'saving invalidates the cache' claim; now explains TTL wait, CacheService.removeAll() with concrete keys, and lowering CACHE_TTL_SECONDS_ (apps-script/README.md)",
-        "14: per-member catch blocks in getAllTasks/getAllSummaries/getChartData now Logger.log the swallowed error so a renamed/deleted tab is visible in Stackdriver (DataService.gs)",
-        "15: readMemberRows_ now throws a clearer error when sheet.getMaxColumns() < 10, naming the expected A..J columns (DataService.gs)"
-      ],
-      "justified_not_fixed": [
-        "3: chartData.billableSplit and chartData.bugsPerMember left in place. They are computed in the same single-pass loop over the member rows (marginal cost ~zero) and exposed for future widgets / external google.script.run callers. A JSDoc note on getChartData now explicitly documents the intent so the fields are not mistaken for dead data."
-      ]
+      "issues_raised": 15,
+      "fixed_in_code": 14,
+      "justified": 1,
+      "fix_commits": ["6e39297", "f29bd55", "29b767b"]
     },
     {
       "version": "v2",
       "review_file": ".agents/tasks/task-qa-daily-status-dashboard/2026-05-21-104624-review.md",
-      "issue_count": 4,
-      "fixed": [
-        "1 (confirmed): 3D-bar selection highlight - the bar3D series now uses per-data-point {value:[i,0,v], itemStyle:{color:'#ff6b9a'}} when i===selectedIdx, mirroring the 2D fallback. The misleading '// per-bar emphasis below' comment is gone (Javascript.html, commit 5d00459)",
-        "2 (likely): partial-mock notice now names the affected PANELS ('member buttons', 'task table', 'KPI cards', 'charts (bar / status / trend)') alongside the failed server fn names, so a non-developer reader can see which parts of the dashboard are sample vs real (Javascript.html, commit 5d00459)",
-        "3 (likely): getChartData billable split now reconciles - anything not literally 'YES' rolls into nonBillable so billable + nonBillable === totalHours regardless of typos / blanks / 'N/A' in the sheet. Matches summarize_'s implicit 'everything else is not billable' treatment. The mock builder in Javascript.html mirrors the same rule and the JSDoc on billableSplit now states the reconciliation guarantee explicitly (DataService.gs, Javascript.html, commit 5d00459)",
-        "4 (possible): MOCK_MEMBERS / MEMBER_SHEETS hand-coupling - when getMembers fails alone, init() derives state.members from Object.keys(state.tasksByMember). MOCK_MEMBERS is the absolute last resort, used only when both slices fail. Cross-reference comments now live on MOCK_MEMBERS in Javascript.html and on MEMBER_SHEETS in Code.gs (Javascript.html commit 5d00459, Code.gs commit 3e7f793)"
-      ],
-      "justified_not_fixed": []
+      "issues_raised": 4,
+      "fixed_in_code": 4,
+      "justified": 0,
+      "fix_commits": ["5d00459", "3e7f793"]
+    },
+    {
+      "version": "v3",
+      "review_file": ".agents/tasks/task-qa-daily-status-dashboard/2026-05-21-105743-review.md",
+      "verdict": "APPROVED",
+      "residual_followups": [
+        "No automated tests (project-level constraint, no test framework offline).",
+        "Partial-mock state can still mix real and mock slices but is now legibly labelled by panel.",
+        "MOCK_MEMBERS and MEMBER_SHEETS are hand-coupled for fully-offline standalone preview when both getMembers and getAllTasks fail."
+      ]
     }
   ]
 }
-
