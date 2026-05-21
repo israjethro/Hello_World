@@ -209,6 +209,18 @@ function readMemberRows_(memberName) {
     throw new Error('Sheet "' + memberName + '" not found');
   }
   var lastRow = sheet.getLastRow();
+  var maxCols = sheet.getMaxColumns();
+  // We need 10 columns (A..J). New Sheets default to 26 columns so this
+  // is normally fine; guard with a clear message in case the tab was
+  // explicitly trimmed below the expected width.
+  if (maxCols < ROW_WIDTH_) {
+    throw new Error(
+      'Sheet "' + memberName + '" has only ' + maxCols + ' column(s); the ' +
+      'dashboard expects at least ' + ROW_WIDTH_ + ' (A..J: S NO, DATE, ' +
+      'CLIENT, PROJECT NAME, HOURS, Billability, Status, Bug Captured, ' +
+      'No of Bugs, Bugs Description).'
+    );
+  }
   var lastCol = Math.max(sheet.getLastColumn(), ROW_WIDTH_);
   // Nothing past the header.
   if (lastRow < 3) return [];
@@ -258,8 +270,14 @@ function getAllTasks() {
       try {
         result[name] = readMemberRows_(name);
       } catch (err) {
-        // Surface a tab-missing problem to the UI per-member rather
-        // than failing the whole dashboard.
+        // Surface a tab-missing problem to Stackdriver so the operator
+        // sees something even though the UI shows zeros for that
+        // member. Per-member isolation prevents one bad tab from
+        // taking down the entire dashboard.
+        try {
+          Logger.log('getAllTasks: skipping member "' + name + '" - ' +
+            (err && err.message ? err.message : err));
+        } catch (logErr) { /* Logger may be unavailable in some contexts. */ }
         result[name] = [];
       }
     }
@@ -286,7 +304,9 @@ function summarize_(memberName, rows) {
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     totalHours += toNumber_(r.hours, 0);
-    if (r.billability === 'BILLABLE') {
+    // The sheet's Billability column stores literal 'YES' / 'NO',
+    // upper-cased on read by upperTrim_(). Match that exactly.
+    if (r.billability === 'YES') {
       billableHours += toNumber_(r.hours, 0);
     }
     if (r.status === 'COMPLETED') completedCount++;
@@ -356,6 +376,10 @@ function getAllSummaries() {
       try {
         rows = readMemberRows_(name);
       } catch (err) {
+        try {
+          Logger.log('getAllSummaries: skipping member "' + name + '" - ' +
+            (err && err.message ? err.message : err));
+        } catch (logErr) { /* Logger may be unavailable. */ }
         rows = [];
       }
       var s = summarize_(name, rows);
@@ -390,6 +414,13 @@ function getAllSummaries() {
  *  - billableSplit: { billable, nonBillable } total hours
  *  - bugsPerMember: [{member, bugs}]
  *
+ * Note: billableSplit and bugsPerMember are not currently consumed
+ * by the dashboard UI; they are computed in the same single pass
+ * over the rows (so the marginal cost is ~zero) and exposed for
+ * future widgets / ad-hoc callers / external consumers of
+ * google.script.run.getChartData. Keeping them stable is
+ * intentional rather than a leak of dead data.
+ *
  * @return {!Object}
  */
 function getChartData() {
@@ -408,6 +439,10 @@ function getChartData() {
       try {
         rows = readMemberRows_(name);
       } catch (err) {
+        try {
+          Logger.log('getChartData: skipping member "' + name + '" - ' +
+            (err && err.message ? err.message : err));
+        } catch (logErr) { /* Logger may be unavailable. */ }
         rows = [];
       }
       var memHours = 0;
@@ -418,8 +453,9 @@ function getChartData() {
         var h = toNumber_(r.hours, 0);
         memHours += h;
         memBugs += toNumber_(r.noOfBugs, 0);
-        if (r.billability === 'BILLABLE') billable += h;
-        else if (r.billability) nonBillable += h;
+        // Billability column uses YES/NO (upper-cased on read).
+        if (r.billability === 'YES') billable += h;
+        else if (r.billability === 'NO') nonBillable += h;
         if (r.status === 'COMPLETED') statusCounts.COMPLETED++;
         else if (r.status === 'IN-PROGRESS' || r.status === 'IN PROGRESS') {
           statusCounts['IN-PROGRESS']++;
