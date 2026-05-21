@@ -32,6 +32,14 @@ var SPREADSHEET_ID = '';
  * Tab names of the five QA team members. Order here drives the order
  * of buttons in the banner and the order of KPI cards.
  *
+ * NOTE: This list is mirrored by MOCK_MEMBERS in Javascript.html so
+ * the mock-fallback path stays consistent with the live data. If you
+ * edit this roster, update MOCK_MEMBERS too. (init() in Javascript.html
+ * also derives the member list from live tasksByMember keys when
+ * getMembers fails alone, so a temporary drift no longer surfaces
+ * mock names against real-keyed data, but keeping the two lists in
+ * sync is still the canonical setup.)
+ *
  * @type {string[]}
  */
 var MEMBER_SHEETS = ['Isra', 'Sowmiya', 'Keerthana', 'Yogesh', 'Tamizharasi'];
