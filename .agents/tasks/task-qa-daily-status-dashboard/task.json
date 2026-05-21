@@ -1,0 +1,7 @@
+{
+  "task_id": "task-qa-daily-status-dashboard",
+  "task_description": "Build a Google Apps Script web app called 'QA - Daily Status Dashboard' that reads the 5-tab QA team Google Sheet (members: Isra, Sowmiya, Keerthana, Yogesh, Tamizharasi) and renders an elegant dashboard with: (1) a banner + interactive per-member buttons, (2) a 3D-style chart section with smooth animations, (3) KPI cards for all 5 resources, and (4) a sortable/searchable filtered task table. All source files live under a new `apps-script/` folder; the existing Java samples in src/ and bin/ remain untouched.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}
