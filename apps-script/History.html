@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f1720">
-  <title>QA - Daily Status Dashboard</title>
+  <title>QA-Tasks History</title>
 
   <!--
     Google Font + ECharts loaded from CDNs at *runtime* in the user's
@@ -23,11 +23,11 @@
 
   <style>
   /* =====================================================================
-     QA - Daily Status Dashboard - Stylesheet
+     QA-Tasks History - Stylesheet
      Theme: teal & pink on a dark glassmorphism surface.
-     All declarations live inside this single <style> block so the
-     Apps Script include() scriptlet pastes one cohesive chunk into
-     the rendered Index.html.
+     This is the single, consolidated <style> block for the page.
+     The project ships exactly two source files (Code.gs + History.html);
+     all styling lives here so there are no separate partials to include.
      ===================================================================== */
 
   :root {
@@ -104,7 +104,7 @@
   }
 
   h1, h2, h3 { font-family: var(--font); margin: 0; letter-spacing: -0.01em; }
-  h2 { font-size: 18px; font-weight: 700; }
+  h2 { font-size: clamp(15px, 1.2vw + 10px, 18px); font-weight: 700; }
 
   a { color: var(--teal); }
 
@@ -266,7 +266,7 @@
      --------------------------------------------------------------------- */
   .charts {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
     gap: 20px;
   }
   .chart-card {
@@ -320,7 +320,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: 20px;
+    padding: 24px 20px 20px;
     cursor: pointer;
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
@@ -340,7 +340,7 @@
   .kpi-card:nth-child(6) { animation-delay: 380ms; }
 
   .kpi-card:hover {
-    transform: translateY(-4px);
+    transform: translateY(-4px) rotate(-0.2deg);
     box-shadow: var(--shadow);
     border-color: var(--border-strong);
     background: var(--surface-strong);
@@ -351,6 +351,76 @@
       0 0 0 1px rgba(255,107,154,0.35) inset,
       0 14px 36px rgba(255,107,154,0.22);
     background: linear-gradient(135deg, rgba(255,107,154,0.10), rgba(15,181,168,0.08));
+  }
+  .kpi-card.is-selected::after {
+    content: '';
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--pink-strong);
+    box-shadow: 0 0 0 4px rgba(255,107,154,0.18);
+  }
+  .kpi-card__check {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    color: #0f1720;
+    font-weight: 800;
+    font-size: 13px;
+    pointer-events: none;
+  }
+  .kpi-card__ribbon {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    border-top-left-radius: var(--radius-md);
+    border-top-right-radius: var(--radius-md);
+    pointer-events: none;
+  }
+  .kpi-card__headline {
+    font-size: clamp(26px, 2.4vw + 6px, 34px);
+    font-weight: 800;
+    line-height: 1.1;
+    margin: 4px 0 2px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-card__headline-sub {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0 0 12px;
+  }
+  .kpi-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    margin: 6px 0 12px;
+  }
+  .kpi-progress__fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--teal), var(--pink-strong));
+    transition: width 600ms cubic-bezier(.2,.7,.2,1);
+  }
+  .kpi-progress__label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    letter-spacing: 0.04em;
+  }
+  .kpi-spark {
+    width: 100%;
+    height: 36px;
+    margin: 8px 0 4px;
   }
 
   .kpi-card__head {
@@ -372,7 +442,7 @@
   }
   .kpi-card__name {
     font-weight: 700;
-    font-size: 16px;
+    font-size: clamp(15px, 1.1vw + 10px, 17px);
     margin: 0;
   }
   .kpi-card__role {
@@ -420,7 +490,9 @@
     -webkit-backdrop-filter: blur(14px);
     box-shadow: var(--shadow);
     overflow: auto;
-    max-height: 560px;
+    width: 100%;
+    max-width: 100%;
+    min-height: 240px;
   }
   table#taskTable {
     width: 100%;
@@ -429,7 +501,8 @@
     font-size: 13.5px;
     min-width: 880px;
   }
-  table#taskTable thead th {
+  table#taskTable thead th,
+  .data-table thead th {
     position: sticky;
     top: 0;
     z-index: 2;
@@ -448,31 +521,45 @@
     user-select: none;
     white-space: nowrap;
   }
-  table#taskTable thead th .sort-ind {
+  table#taskTable thead th .sort-ind,
+  .data-table thead th .sort-ind {
     display: inline-block;
     margin-left: 6px;
     opacity: 0.5;
     font-size: 10px;
   }
-  table#taskTable thead th.is-sorted { color: var(--text); }
-  table#taskTable thead th.is-sorted .sort-ind { opacity: 1; color: var(--pink-strong); }
+  table#taskTable thead th.is-sorted,
+  .data-table thead th.is-sorted { color: var(--text); }
+  table#taskTable thead th.is-sorted .sort-ind,
+  .data-table thead th.is-sorted .sort-ind { opacity: 1; color: var(--pink-strong); }
 
-  table#taskTable tbody td {
+  table#taskTable tbody td,
+  .data-table tbody td {
     padding: 12px 14px;
     border-bottom: 1px solid rgba(255,255,255,0.04);
     vertical-align: middle;
     color: var(--text);
   }
-  table#taskTable tbody tr:nth-child(even) td {
+  table#taskTable tbody tr:nth-child(even) td,
+  .data-table tbody tr:nth-child(even) td {
     background: rgba(255,255,255,0.025);
   }
-  table#taskTable tbody tr:hover td {
+  table#taskTable tbody tr:hover td,
+  .data-table tbody tr:hover td {
     background: rgba(15,181,168,0.06);
   }
-  table#taskTable tbody tr.is-empty td {
+  table#taskTable tbody tr.is-empty td,
+  .data-table tbody tr.is-empty td {
     color: var(--muted);
     text-align: center;
     padding: 28px 14px;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13.5px;
+    min-width: 720px;
   }
 
   /* status pills */
@@ -518,6 +605,68 @@
   }
   .billable-yes { color: #b9f6ee; font-weight: 600; }
   .billable-no  { color: var(--muted); }
+
+  /* totals row inside breakdown tables */
+  tbody tr.is-totals td {
+    background: rgba(255,255,255,0.06);
+    font-weight: 700;
+    border-top: 1px solid rgba(255,255,255,0.12);
+  }
+
+  /* table footer (Showing N of M tasks) */
+  .table-footer {
+    padding: 10px 16px;
+    color: var(--muted);
+    font-size: 12.5px;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  /* team totals strip (above charts) */
+  .totals-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 0 4px;
+  }
+  .totals-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 13px;
+    display: inline-flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .totals-pill b { font-weight: 800; font-size: 14px; }
+
+  /* icon button (CSV download on breakdown tables) */
+  .icon-btn {
+    appearance: none;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    transition: background var(--t-fast),
+                border-color var(--t-fast),
+                transform var(--t-fast);
+  }
+  .icon-btn:hover {
+    background: var(--surface-strong);
+    border-color: var(--pink-strong);
+    transform: translateY(-1px);
+  }
+  .icon-btn svg { display: inline-block; }
 
   /* search input */
   .search {
@@ -607,11 +756,21 @@
   /* ---------------------------------------------------------------------
      Responsive
      --------------------------------------------------------------------- */
+  @media (min-width: 1400px) {
+    main { max-width: 1480px; padding: 28px 36px 48px; }
+    .banner__inner { max-width: 1480px; }
+    .footer { max-width: 1480px; }
+    .notice { max-width: 1480px; }
+  }
+  @media (max-width: 1100px) {
+    .charts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .chart-card--wide { grid-column: 1 / -1; }
+  }
   @media (max-width: 900px) {
     .charts { grid-template-columns: 1fr; }
     .chart-canvas--tall { height: 320px; }
-    .banner__inner { grid-template-columns: 1fr; }
-    .banner__art { max-width: 320px; justify-self: center; }
+    .banner__inner { grid-template-columns: 1fr; gap: 16px; }
+    .banner__art { display: none; }
   }
   @media (max-width: 720px) {
     main { padding: 16px 16px 32px; gap: 22px; }
@@ -620,8 +779,19 @@
     .kpi-grid { grid-template-columns: repeat(2, 1fr); }
     .search input { width: 160px; }
     .table-section__header { flex-direction: column; align-items: flex-start; }
-    .table-wrap { max-height: none; }
+    .table-wrap { min-height: 200px; }
     table#taskTable { min-width: 720px; }
+    .chart-canvas { height: 240px; }
+    .chart-canvas--tall { height: 280px; }
+  }
+  @media (max-width: 480px) {
+    .member-buttons button { padding: 8px 12px; font-size: 13px; }
+    .kpi-grid { grid-template-columns: 1fr; gap: 8px; }
+    .search { width: 100%; }
+    .search input { width: 100%; min-width: 0; }
+    .table-section__header,
+    .cards__header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .banner__title { font-size: 26px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -631,6 +801,7 @@
       transition-duration: 0.001ms !important;
     }
     body::before { animation: none; }
+    .kpi-card:hover { transform: none; }
   }
 </style>
 </head>
@@ -648,9 +819,9 @@
   <div class="banner__inner">
 
     <div class="banner__copy">
-      <p class="banner__eyebrow">QA TEAM</p>
-      <h1 class="banner__title">QA - Daily Status</h1>
-      <p class="banner__tagline">Live view of the team's daily QA work, billability and bug captures.</p>
+      <p class="banner__eyebrow">QA TEAM • HISTORY</p>
+      <h1 class="banner__title">QA-Tasks History</h1>
+      <p class="banner__tagline">Live history of every QA task: hours, billability, status and bug captures across the team.</p>
 
       <nav class="member-buttons" aria-label="Filter by team member">
         <div id="memberButtons" role="tablist" aria-label="Team members"></div>
@@ -715,6 +886,8 @@
 
     <main>
 
+      <div id="totalsStrip" class="totals-strip" aria-label="Team totals"></div>
+
       <section id="charts" class="charts" aria-label="Charts">
         <div class="chart-card chart-card--wide" aria-label="Hours per member 3D">
           <div class="chart-card__header">
@@ -726,7 +899,7 @@
         <div class="chart-card" aria-label="Status breakdown">
           <div class="chart-card__header">
             <h2>Status breakdown</h2>
-            <span class="chart-card__sub">Completed vs In-Progress</span>
+            <span class="chart-card__sub">Completed / In-Progress / Other</span>
           </div>
           <div id="chartStatus" class="chart-canvas" role="img" aria-label="Doughnut chart of task statuses"></div>
         </div>
@@ -763,12 +936,64 @@
             <tbody></tbody>
           </table>
         </div>
+        <div id="taskTableFooter" class="table-footer" aria-live="polite"></div>
+      </section>
+
+      <section id="clientTable" class="table-section" aria-label="Client-wise summary">
+        <div class="table-section__header">
+          <h2>Client-wise summary</h2>
+          <button class="icon-btn" type="button" data-csv="client" aria-label="Download client-wise summary as CSV">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+            <span>CSV</span>
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" data-table="client">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="clientTableFooter" class="table-footer" aria-live="polite"></div>
+      </section>
+
+      <section id="billableTable" class="table-section" aria-label="Billable tasks">
+        <div class="table-section__header">
+          <h2>Billable tasks</h2>
+          <button class="icon-btn" type="button" data-csv="billable" aria-label="Download billable tasks as CSV">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+            <span>CSV</span>
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" data-table="billable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="billableTableFooter" class="table-footer" aria-live="polite"></div>
+      </section>
+
+      <section id="nonBillableTable" class="table-section" aria-label="Non-Billable tasks">
+        <div class="table-section__header">
+          <h2>Non-Billable tasks</h2>
+          <button class="icon-btn" type="button" data-csv="non-billable" aria-label="Download non-billable tasks as CSV">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+            <span>CSV</span>
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" data-table="non-billable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="nonBillableTableFooter" class="table-footer" aria-live="polite"></div>
       </section>
 
     </main>
 
     <footer class="footer" aria-label="Page footer">
-      <span>QA - Daily Status Dashboard</span>
+      <span>QA-Tasks History</span>
       <span class="footer__sep" aria-hidden="true">-</span>
       <span class="footer__updated">Last updated: <span id="updatedAt">-</span></span>
     </footer>
@@ -777,10 +1002,10 @@
 
   <script>
   /* =====================================================================
-     Javascript.html - client logic for the QA - Daily Status Dashboard.
+     Inline IIFE - client logic for the QA-Tasks History dashboard.
 
-     Single <script> block (Apps Script include() pastes this verbatim
-     into Index.html). Vanilla JS, no module system, no transpiler.
+     Single <script> block embedded directly in History.html. Vanilla
+     JS, no module system, no transpiler.
 
      Responsibilities:
        1. runServer(fn, ...args) - Promise bridge over google.script.run.
@@ -795,7 +1020,7 @@
        4. Helpers: fmtDate, fmtHours, hashHsl (deterministic vivid color).
 
      Billability:
-       Server (DataService.gs / summarize_) and client agree on the
+       Server (Code.gs / summarize_) and client agree on the
        sheet's Billability convention: literal 'YES' / 'NO' (uppercased
        on read). KPI cards therefore render directly from
        state.summaries, no client-side recompute needed. The mock
@@ -863,6 +1088,7 @@
         billableHours: 0,
         completedCount: 0,
         inProgressCount: 0,
+        otherCount: 0,
         totalBugs: 0,
         distinctClients: 0
       };
@@ -877,6 +1103,7 @@
         var st = String(r.status || '').toUpperCase();
         if (st === 'COMPLETED') totals.completedCount++;
         else if (st === 'IN-PROGRESS' || st === 'IN PROGRESS') totals.inProgressCount++;
+        else totals.otherCount++;
         totals.totalBugs += Number(r.noOfBugs) || 0;
         if (r.client) clients[r.client] = true;
       }
@@ -888,7 +1115,17 @@
 
     function buildMockSummaries(tasksByMember) {
       var out = [];
-      var totals = { member: 'totals', totalTasks: 0, totalHours: 0, billableHours: 0, completedCount: 0, inProgressCount: 0, totalBugs: 0, distinctClients: 0 };
+      var totals = {
+        member: 'totals',
+        totalTasks: 0,
+        totalHours: 0,
+        billableHours: 0,
+        completedCount: 0,
+        inProgressCount: 0,
+        otherCount: 0,
+        totalBugs: 0,
+        distinctClients: 0
+      };
       var allClients = Object.create(null);
       MOCK_MEMBERS.forEach(function (name) {
         var rows = tasksByMember[name] || [];
@@ -899,6 +1136,7 @@
         totals.billableHours   += s.billableHours;
         totals.completedCount  += s.completedCount;
         totals.inProgressCount += s.inProgressCount;
+        totals.otherCount      += s.otherCount;
         totals.totalBugs       += s.totalBugs;
         rows.forEach(function (r) { if (r.client) allClients[r.client] = true; });
       });
@@ -914,7 +1152,7 @@
       var bugsPerMember  = [];
       var hoursPerDay    = { all: [] };
       var allDayMap      = Object.create(null);
-      var statusCounts   = { COMPLETED: 0, 'IN-PROGRESS': 0 };
+      var statusCounts   = { COMPLETED: 0, 'IN-PROGRESS': 0, OTHER: 0 };
       var billable = 0, nonBillable = 0;
 
       MOCK_MEMBERS.forEach(function (name) {
@@ -930,6 +1168,7 @@
           var st = String(r.status || '').toUpperCase();
           if (st === 'COMPLETED') statusCounts.COMPLETED++;
           else if (st === 'IN-PROGRESS' || st === 'IN PROGRESS') statusCounts['IN-PROGRESS']++;
+          else statusCounts.OTHER++;
           if (r.date) {
             memDayMap[r.date] = (memDayMap[r.date] || 0) + h;
             allDayMap[r.date] = (allDayMap[r.date] || 0) + h;
@@ -945,7 +1184,8 @@
         hoursPerMember: hoursPerMember,
         statusBreakdown: [
           { label: 'COMPLETED',   value: statusCounts.COMPLETED },
-          { label: 'IN-PROGRESS', value: statusCounts['IN-PROGRESS'] }
+          { label: 'IN-PROGRESS', value: statusCounts['IN-PROGRESS'] },
+          { label: 'OTHER',       value: statusCounts.OTHER }
         ],
         hoursPerDay: hoursPerDay,
         billableSplit: { billable: round2(billable), nonBillable: round2(nonBillable) },
@@ -1017,12 +1257,17 @@
       summaries: [],
       chartData: null,
       sort: { key: 'date', dir: 'desc' },
+      clientSort: { key: 'totalHours', dir: 'desc' },
+      billableSort: { key: 'date', dir: 'desc' },
+      nonBillableSort: { key: 'date', dir: 'desc' },
       search: '',
       usingMock: false
     };
 
     // Charts kept module-scope so we can dispose/setOption on filter change.
     var charts = { chart3d: null, chartStatus: null, chartTrend: null };
+    // Per-member sparkline ECharts instances, keyed by member name.
+    var sparklines = {};
 
     // ===================================================================
     // Helpers
@@ -1133,11 +1378,27 @@
     function renderCards() {
       var grid = $('#cardsGrid');
       if (!grid) return;
+      // Tear down any prior sparkline ECharts instances since the
+      // <div data-spark> nodes they were bound to are about to be
+      // removed by clear().
+      Object.keys(sparklines).forEach(function (k) {
+        if (sparklines[k]) { try { sparklines[k].dispose(); } catch (e) {} }
+        delete sparklines[k];
+      });
       clear(grid);
 
       var members = state.members || [];
       members.forEach(function (name, idx) {
         var s = summaryFor(name);
+        var ribbonColor = hashHsl(name);
+        var nonBillableHours = round2(Math.max(0, (Number(s.totalHours) || 0) - (Number(s.billableHours) || 0)));
+        var totalForPct = Number(s.totalTasks) || 0;
+        var completedCount = Number(s.completedCount) || 0;
+        var pct = totalForPct > 0 ? Math.round((completedCount / totalForPct) * 100) : 0;
+        if (pct < 0) pct = 0; if (pct > 100) pct = 100;
+        var pctLabel = totalForPct > 0
+          ? (completedCount + '/' + totalForPct + ' (' + pct + '%)')
+          : '0/0';
 
         // Build the card via a wrapping fragment so the literal
         // class="kpi-card" string is present in the rendered DOM
@@ -1149,8 +1410,10 @@
             'aria-pressed="' + (state.selected === name ? 'true' : 'false') + '" ' +
             'data-member="' + escapeHtml(name) + '" ' +
             'style="animation-delay:' + (idx * 60) + 'ms">' +
+            '<div class="kpi-card__ribbon" style="background:' + escapeHtml(ribbonColor) + '"></div>' +
+            (state.selected === name ? '<span class="kpi-card__check" aria-hidden="true">\u2713</span>' : '') +
             '<div class="kpi-card__head">' +
-              '<div class="avatar" style="background:' + escapeHtml(hashHsl(name)) + '">' +
+              '<div class="avatar" style="background:' + escapeHtml(ribbonColor) + '">' +
                 escapeHtml(initials(name)) +
               '</div>' +
               '<div>' +
@@ -1158,10 +1421,20 @@
                 '<p class="kpi-card__role">QA Engineer - ' + s.distinctClients + ' clients</p>' +
               '</div>' +
             '</div>' +
+            '<div class="kpi-card__headline">' + escapeHtml(fmtHours(s.totalHours)) + '</div>' +
+            '<p class="kpi-card__headline-sub">Total hours</p>' +
+            '<div class="kpi-progress__label">' +
+              '<span>COMPLETED</span><span>' + escapeHtml(pctLabel) + '</span>' +
+            '</div>' +
+            '<div class="kpi-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" ' +
+                 'aria-valuenow="' + pct + '">' +
+              '<div class="kpi-progress__fill" style="width:' + pct + '%"></div>' +
+            '</div>' +
+            '<div class="kpi-spark" data-spark="' + escapeHtml(name) + '" aria-hidden="true"></div>' +
             '<div class="kpi-grid">' +
               kpi('Tasks',        s.totalTasks) +
-              kpi('Hours',        fmtHours(s.totalHours), 'kpi--accent') +
-              kpi('Billable Hrs', fmtHours(s.billableHours), 'kpi--accent') +
+              kpi('Billable',     fmtHours(s.billableHours), 'kpi--accent') +
+              kpi('Non-Billable', fmtHours(nonBillableHours)) +
               kpi('Completed',    s.completedCount) +
               kpi('In-Progress',  s.inProgressCount, 'kpi--warn') +
               kpi('Bugs',         s.totalBugs, s.totalBugs > 0 ? 'kpi--bug' : '') +
@@ -1186,6 +1459,147 @@
         '<div class="kpi__label">' + escapeHtml(label) + '</div>' +
         '<div class="kpi__value">' + escapeHtml(String(value)) + '</div>' +
       '</div>';
+    }
+
+    // ===================================================================
+    // Render: Per-card sparkline (last 7 entries of hoursPerDay[name])
+    // ===================================================================
+    function renderSparklines() {
+      if (typeof echarts === 'undefined') return;
+      var members = state.members || [];
+      members.forEach(function (name) {
+        var slot = document.querySelector('.kpi-spark[data-spark="' + cssEscape(name) + '"]');
+        if (!slot) return;
+        var perDay = (state.chartData && state.chartData.hoursPerDay && state.chartData.hoursPerDay[name]) || [];
+        // Server returns ascending-sorted entries; take the last 7.
+        var slice = perDay.slice(-7);
+        var hours = slice.map(function (p) { return Number(p.hours) || 0; });
+        var dates = slice.map(function (p) { return p.date; });
+
+        // Dispose any prior instance bound to this slot before re-init.
+        if (sparklines[name]) { try { sparklines[name].dispose(); } catch (e) {} }
+        var inst = null;
+        try { inst = echarts.init(slot, null, { renderer: 'canvas' }); } catch (e) { inst = null; }
+        if (!inst) return;
+        sparklines[name] = inst;
+
+        var color = hashHsl(name);
+        var opt = {
+          animation: false,
+          grid: { left: 0, right: 0, top: 2, bottom: 2, containLabel: false },
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(15,23,32,0.92)',
+            borderColor: 'rgba(255,255,255,0.12)',
+            textStyle: { color: '#eaf2f4' },
+            formatter: function (p) {
+              if (!p || !p.length) return '';
+              var idx = p[0].dataIndex;
+              return fmtDate(dates[idx]) + ': <b>' + fmtHours(hours[idx]) + '</b>';
+            }
+          },
+          xAxis: { type: 'category', show: false, data: dates, boundaryGap: false },
+          yAxis: { type: 'value', show: false, min: 0 },
+          series: [{
+            type: 'line',
+            data: hours,
+            smooth: true,
+            showSymbol: hours.length === 1,
+            symbol: 'circle',
+            symbolSize: 4,
+            lineStyle: { width: 2, color: color },
+            itemStyle: { color: color },
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: color },
+                { offset: 1, color: 'rgba(15,181,168,0.02)' }
+              ]),
+              opacity: 0.45
+            }
+          }]
+        };
+        try { inst.setOption(opt, true); } catch (e) {}
+      });
+    }
+
+    // CSS attribute selector escaper for member names that may contain
+    // unusual characters. Falls back to a basic escape when
+    // CSS.escape is not available.
+    function cssEscape(s) {
+      var str = String(s == null ? '' : s);
+      if (typeof CSS !== 'undefined' && CSS && typeof CSS.escape === 'function') {
+        try { return CSS.escape(str); } catch (e) {}
+      }
+      return str.replace(/[^a-zA-Z0-9_\-]/g, function (ch) {
+        return '\\' + ch.charCodeAt(0).toString(16) + ' ';
+      });
+    }
+
+    // ===================================================================
+    // Render: Team totals strip (above charts)
+    // ===================================================================
+    function findSummary(name) {
+      var arr = state.summaries || [];
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].member === name) return arr[i];
+      }
+      return null;
+    }
+
+    function pickTotalsRow() {
+      // When 'All', use the synthetic 'totals' row that the server
+      // appends to getAllSummaries (and the MOCK mirrors). When a
+      // single member is picked, show that member's row.
+      if (state.selected === 'All') {
+        var totals = findSummary('totals');
+        if (totals) return totals;
+        // Compute on the fly if missing (defensive for partial mock).
+        var rows = (state.members || []).map(function (m) { return findSummary(m); }).filter(Boolean);
+        var sum = {
+          member: 'totals', totalTasks: 0, totalHours: 0, billableHours: 0,
+          completedCount: 0, inProgressCount: 0, otherCount: 0, totalBugs: 0
+        };
+        rows.forEach(function (r) {
+          sum.totalTasks      += Number(r.totalTasks) || 0;
+          sum.totalHours      += Number(r.totalHours) || 0;
+          sum.billableHours   += Number(r.billableHours) || 0;
+          sum.completedCount  += Number(r.completedCount) || 0;
+          sum.inProgressCount += Number(r.inProgressCount) || 0;
+          sum.otherCount      += Number(r.otherCount) || 0;
+          sum.totalBugs       += Number(r.totalBugs) || 0;
+        });
+        sum.totalHours    = round2(sum.totalHours);
+        sum.billableHours = round2(sum.billableHours);
+        return sum;
+      }
+      return findSummary(state.selected) || summaryFor(state.selected);
+    }
+
+    function renderTotalsStrip() {
+      var strip = document.getElementById('totalsStrip');
+      if (!strip) return;
+      clear(strip);
+      var t = pickTotalsRow();
+      if (!t) return;
+      var totalHours    = Number(t.totalHours) || 0;
+      var billableHours = Number(t.billableHours) || 0;
+      var nonBillable   = round2(Math.max(0, totalHours - billableHours));
+      var pills = [
+        { label: 'Total tasks',       value: String(Number(t.totalTasks) || 0) },
+        { label: 'Total hours',       value: fmtHours(totalHours) },
+        { label: 'Billable hours',    value: fmtHours(billableHours) },
+        { label: 'Non-Billable hours',value: fmtHours(nonBillable) },
+        { label: 'Completed',         value: String(Number(t.completedCount) || 0) },
+        { label: 'In-Progress',       value: String(Number(t.inProgressCount) || 0) },
+        { label: 'OTHER',             value: String(Number(t.otherCount) || 0) },
+        { label: 'Bugs',              value: String(Number(t.totalBugs) || 0) }
+      ];
+      pills.forEach(function (p) {
+        var span = document.createElement('span');
+        span.className = 'totals-pill';
+        span.innerHTML = escapeHtml(p.label) + ': <b>' + escapeHtml(p.value) + '</b>';
+        strip.appendChild(span);
+      });
     }
 
     // ===================================================================
@@ -1362,7 +1776,7 @@
             legend: {
               bottom: 0, textStyle: { color: '#9fb1bd' }, icon: 'circle'
             },
-            color: ['#0fb5a8', '#ff6b9a'],
+            color: ['#0fb5a8', '#ff6b9a', '#9fb1bd'],
             series: [{
               type: 'pie',
               radius: ['58%', '82%'],
@@ -1376,11 +1790,12 @@
                 show: true,
                 position: 'center',
                 formatter: function () {
-                  // The doughnut intentionally shows only COMPLETED vs
-                  // IN-PROGRESS, so this number is the count of those
-                  // two buckets, not all rows. Label as "tracked" to
-                  // avoid claiming it is the total task count.
-                  return '{big|' + total + '}\n{small|tracked}';
+                  // Big number = sum of all visible buckets (the actual
+                  // total task count for the current selection,
+                  // including the OTHER bucket). The subtitle is
+                  // intentionally generic - it is the canonical task
+                  // total for the selected member or the team.
+                  return '{big|' + total + '}\n{small|total tasks}';
                 },
                 rich: {
                   big:   { fontSize: 28, fontWeight: 800, color: '#eaf2f4', lineHeight: 32 },
@@ -1390,7 +1805,8 @@
               labelLine: { show: false },
               data: sb.map(function (s) {
                 var nice = s.label === 'COMPLETED' ? 'Completed' :
-                           s.label === 'IN-PROGRESS' ? 'In-Progress' : s.label;
+                           s.label === 'IN-PROGRESS' ? 'In-Progress' :
+                           s.label === 'OTHER' ? 'Other' : s.label;
                 return { name: nice, value: s.value };
               })
             }]
@@ -1426,6 +1842,10 @@
             },
             yAxis: {
               type: 'value',
+              name: state.selected === 'All'
+                ? 'Team hours / day'
+                : (state.selected + ' hours / day'),
+              nameTextStyle: { color: '#9fb1bd' },
               axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
               axisLabel: { color: '#9fb1bd', formatter: '{value}h' },
               splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
@@ -1455,20 +1875,27 @@
     function computeStatusBreakdown() {
       // When a single member is selected, recompute from raw rows so
       // the chart matches the table; otherwise use the server bundle.
+      var raw;
       if (state.selected !== 'All') {
         var rows = (state.tasksByMember && state.tasksByMember[state.selected]) || [];
-        var c = 0, p = 0;
+        var c = 0, p = 0, o = 0;
         rows.forEach(function (r) {
           var st = String(r.status || '').toUpperCase();
           if (st === 'COMPLETED') c++;
           else if (st === 'IN-PROGRESS' || st === 'IN PROGRESS') p++;
+          else o++;
         });
-        return [
+        raw = [
           { label: 'COMPLETED',   value: c },
-          { label: 'IN-PROGRESS', value: p }
+          { label: 'IN-PROGRESS', value: p },
+          { label: 'OTHER',       value: o }
         ];
+      } else {
+        raw = (state.chartData && state.chartData.statusBreakdown) || [];
       }
-      return (state.chartData && state.chartData.statusBreakdown) || [];
+      // Drop zero-value buckets so the donut never renders an empty
+      // phantom slice (server may include OTHER:0 when nothing else).
+      return raw.filter(function (s) { return Number(s.value) > 0; });
     }
 
     function computeTrendSeries() {
@@ -1481,6 +1908,9 @@
     function resizeCharts() {
       Object.keys(charts).forEach(function (k) {
         if (charts[k]) { try { charts[k].resize(); } catch (e) {} }
+      });
+      Object.keys(sparklines).forEach(function (k) {
+        if (sparklines[k]) { try { sparklines[k].resize(); } catch (e) {} }
       });
     }
 
@@ -1585,7 +2015,9 @@
       });
       thead.appendChild(trh);
 
-      var rows = applySearchAndSort(getVisibleRows());
+      var allRows = getVisibleRows();
+      var rows = applySearchAndSort(allRows);
+      var footer = document.getElementById('taskTableFooter');
       if (!rows.length) {
         var tr = document.createElement('tr');
         tr.className = 'is-empty';
@@ -1594,6 +2026,11 @@
         td.textContent = state.search ? 'No tasks match "' + state.search + '"' : 'No tasks to display.';
         tr.appendChild(td);
         tbody.appendChild(tr);
+        if (footer) {
+          var msg0 = 'Showing 0 of ' + allRows.length + ' tasks';
+          if (state.search) msg0 += ' \u2022 filter: "' + state.search + '"';
+          footer.textContent = msg0;
+        }
         return;
       }
 
@@ -1640,6 +2077,388 @@
         });
         tbody.appendChild(tr);
       });
+
+      if (footer) {
+        var msg = 'Showing ' + rows.length + ' of ' + allRows.length + ' tasks';
+        if (state.search) msg += ' \u2022 filter: "' + state.search + '"';
+        footer.textContent = msg;
+      }
+    }
+
+    // ===================================================================
+    // Render: Generic data table (used by client/billable/non-billable)
+    // ===================================================================
+    /**
+     * Render a sortable table into <thead>/<tbody> of `tableEl`, using
+     * the column descriptors in `columns` and the rows in `rows`. The
+     * sort state is read/written through accessors so each table can
+     * keep its own sort independent of the main #taskTable.
+     *
+     * @param {HTMLTableElement} tableEl
+     * @param {Array<{key,label,type,align,format,width}>} columns
+     * @param {Array<Object>} rows
+     * @param {{ getSort: Function, setSort: Function }} sortAccessors
+     * @param {HTMLElement|null} footerEl
+     * @param {{ totals?: { firstCellLabel: string, sums: Object } }=} extra
+     */
+    function renderGenericTable(tableEl, columns, rows, sortAccessors, footerEl, extra) {
+      if (!tableEl) return;
+      var thead = tableEl.querySelector('thead');
+      var tbody = tableEl.querySelector('tbody');
+      if (!thead || !tbody) return;
+      clear(thead);
+      clear(tbody);
+
+      var sort = sortAccessors.getSort();
+      var trh = document.createElement('tr');
+      columns.forEach(function (c) {
+        var th = document.createElement('th');
+        th.dataset.key = c.key;
+        if (c.align === 'right') th.style.textAlign = 'right';
+        var sortedHere = (sort.key === c.key);
+        if (sortedHere) th.classList.add('is-sorted');
+        var ind = sortedHere ? (sort.dir === 'asc' ? '&#9650;' : '&#9660;') : '&#8597;';
+        th.innerHTML = escapeHtml(c.label) + '<span class="sort-ind" aria-hidden="true">' + ind + '</span>';
+        th.setAttribute('scope', 'col');
+        th.setAttribute('aria-sort',
+          sortedHere ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+        th.addEventListener('click', function () {
+          var s = sortAccessors.getSort();
+          if (s.key === c.key) {
+            sortAccessors.setSort({ key: c.key, dir: s.dir === 'asc' ? 'desc' : 'asc' });
+          } else {
+            sortAccessors.setSort({ key: c.key, dir: (c.type === 'number' || c.type === 'date') ? 'desc' : 'asc' });
+          }
+        });
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+
+      // Sort the rows according to current sort state.
+      var col = columns.filter(function (c) { return c.key === sort.key; })[0] || columns[0];
+      var dir = sort.dir === 'asc' ? 1 : -1;
+      var sorted = rows.slice().sort(function (a, b) {
+        var av = a[sort.key], bv = b[sort.key];
+        if ((col && col.type) === 'number') {
+          return ((Number(av) || 0) - (Number(bv) || 0)) * dir;
+        }
+        if ((col && col.type) === 'date') {
+          return (String(av || '') < String(bv || '') ? -1 :
+                  String(av || '') > String(bv || '') ?  1 : 0) * dir;
+        }
+        return String(av == null ? '' : av).toLowerCase()
+          .localeCompare(String(bv == null ? '' : bv).toLowerCase()) * dir;
+      });
+
+      if (!sorted.length) {
+        var trEmpty = document.createElement('tr');
+        trEmpty.className = 'is-empty';
+        var tdEmpty = document.createElement('td');
+        tdEmpty.colSpan = columns.length;
+        tdEmpty.textContent = 'No rows to display.';
+        trEmpty.appendChild(tdEmpty);
+        tbody.appendChild(trEmpty);
+      } else {
+        sorted.forEach(function (r) {
+          var tr = document.createElement('tr');
+          columns.forEach(function (c) {
+            var td = document.createElement('td');
+            if (c.align === 'right') td.style.textAlign = 'right';
+            var v = r[c.key];
+            if (typeof c.format === 'function') {
+              var out = c.format(v, r);
+              if (out && typeof out === 'object' && out.html) {
+                td.innerHTML = out.html;
+              } else {
+                td.textContent = (out == null ? '' : String(out));
+              }
+            } else {
+              td.textContent = (v == null ? '' : String(v));
+            }
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+
+        if (extra && extra.totals) {
+          var trT = document.createElement('tr');
+          trT.className = 'is-totals';
+          columns.forEach(function (c, i) {
+            var td = document.createElement('td');
+            if (c.align === 'right') td.style.textAlign = 'right';
+            if (i === 0) {
+              td.textContent = extra.totals.firstCellLabel;
+            } else if (Object.prototype.hasOwnProperty.call(extra.totals.sums, c.key)) {
+              var v = extra.totals.sums[c.key];
+              if (typeof c.format === 'function') {
+                var out = c.format(v, { __totals: true });
+                td.textContent = (out && typeof out === 'object' && out.html)
+                  ? stripTags(out.html)
+                  : (out == null ? '' : String(out));
+              } else {
+                td.textContent = (v == null ? '' : String(v));
+              }
+            } else {
+              td.textContent = '';
+            }
+            trT.appendChild(td);
+          });
+          tbody.appendChild(trT);
+        }
+      }
+
+      if (footerEl) {
+        var msg = 'Showing ' + sorted.length + ' of ' + rows.length + ' rows';
+        if (state.search) msg += ' \u2022 filter: "' + state.search + '"';
+        footerEl.textContent = msg;
+      }
+    }
+
+    function stripTags(html) {
+      return String(html == null ? '' : html).replace(/<[^>]*>/g, '');
+    }
+
+    // ===================================================================
+    // Aggregations + breakdown table renders
+    // ===================================================================
+    function aggregateByClient(rows) {
+      var bucket = Object.create(null);
+      var memberSets = Object.create(null);
+      rows.forEach(function (r) {
+        var client = r.client || '(none)';
+        if (!bucket[client]) {
+          bucket[client] = {
+            client: client,
+            tasks: 0, totalHours: 0, billableHours: 0, nonBillableHours: 0,
+            completedCount: 0, inProgressCount: 0, otherCount: 0, totalBugs: 0,
+            members: ''
+          };
+          memberSets[client] = Object.create(null);
+        }
+        var b = bucket[client];
+        var h = Number(r.hours) || 0;
+        b.tasks++;
+        b.totalHours += h;
+        if (String(r.billability || '').toUpperCase() === 'YES') b.billableHours += h;
+        else b.nonBillableHours += h;
+        var st = String(r.status || '').toUpperCase();
+        if (st === 'COMPLETED') b.completedCount++;
+        else if (st === 'IN-PROGRESS' || st === 'IN PROGRESS') b.inProgressCount++;
+        else b.otherCount++;
+        b.totalBugs += Number(r.noOfBugs) || 0;
+        if (r.member) memberSets[client][r.member] = true;
+      });
+      var out = Object.keys(bucket).map(function (k) {
+        var b = bucket[k];
+        b.totalHours       = round2(b.totalHours);
+        b.billableHours    = round2(b.billableHours);
+        b.nonBillableHours = round2(b.nonBillableHours);
+        b.members = Object.keys(memberSets[k]).sort().join(', ');
+        return b;
+      });
+      out.sort(function (a, b) { return b.totalHours - a.totalHours; });
+      return out;
+    }
+
+    function renderClientTable() {
+      var tbl = document.querySelector('#clientTable .data-table');
+      var footer = document.getElementById('clientTableFooter');
+      if (!tbl) return;
+      var rows = aggregateByClient(getVisibleRows());
+      var columns = [
+        { key: 'client',           label: 'Client',         type: 'text' },
+        { key: 'tasks',            label: 'Tasks',          type: 'number', align: 'right' },
+        { key: 'totalHours',       label: 'Total hrs',      type: 'number', align: 'right',
+          format: function (v) { return fmtHours(v); } },
+        { key: 'billableHours',    label: 'Billable hrs',   type: 'number', align: 'right',
+          format: function (v) { return fmtHours(v); } },
+        { key: 'nonBillableHours', label: 'Non-Billable hrs', type: 'number', align: 'right',
+          format: function (v) { return fmtHours(v); } },
+        { key: 'completedCount',   label: 'Completed',      type: 'number', align: 'right' },
+        { key: 'inProgressCount',  label: 'In-Progress',    type: 'number', align: 'right' },
+        { key: 'totalBugs',        label: 'Bugs',           type: 'number', align: 'right' }
+      ];
+      if (state.selected === 'All') {
+        columns.push({ key: 'members', label: 'Members', type: 'text' });
+      }
+      var accessors = {
+        getSort: function () { return state.clientSort; },
+        setSort: function (s) { state.clientSort = s; renderClientTable(); }
+      };
+      renderGenericTable(tbl, columns, rows, accessors, footer);
+    }
+
+    function buildDailyColumns() {
+      var cols = [
+        { key: 'sNo',         label: 'S No',        type: 'text' },
+        { key: 'date',        label: 'Date',        type: 'date',
+          format: function (v) { return fmtDate(v); } },
+        { key: 'client',      label: 'Client',      type: 'text' },
+        { key: 'projectName', label: 'Project',     type: 'text' },
+        { key: 'hours',       label: 'Hours',       type: 'number', align: 'right',
+          format: function (v) { return fmtHours(v); } },
+        { key: 'billability', label: 'Billability', type: 'text',
+          format: function (v) {
+            var up = String(v || '').toUpperCase();
+            return { html: '<span class="' + (up === 'YES' ? 'billable-yes' : 'billable-no') + '">' +
+                           escapeHtml(up || '-') + '</span>' };
+          } },
+        { key: 'status',      label: 'Status',      type: 'text',
+          format: function (v) {
+            var st = String(v || '').toUpperCase();
+            var cls = (st === 'COMPLETED') ? 'completed' :
+                      (st === 'IN-PROGRESS' || st === 'IN PROGRESS') ? 'in-progress' : '';
+            var label = (st === 'IN PROGRESS') ? 'IN-PROGRESS' : st;
+            return cls
+              ? { html: '<span class="pill ' + cls + '">' + escapeHtml(label) + '</span>' }
+              : (label || '-');
+          } },
+        { key: 'noOfBugs',    label: 'Bugs',        type: 'number', align: 'right',
+          format: function (v) {
+            var n = Number(v) || 0;
+            return n > 0
+              ? { html: '<span class="bug-badge" title="bugs">' + n + '</span>' }
+              : { html: '<span class="billable-no">0</span>' };
+          } },
+        { key: 'bugsDescription', label: 'Description', type: 'text' }
+      ];
+      if (state.selected === 'All') {
+        cols.splice(1, 0, {
+          key: 'member', label: 'Member', type: 'text',
+          format: function (v) {
+            return { html: '<span class="pill" style="background: rgba(15,181,168,0.14); border-color: rgba(15,181,168,0.45); color:#b9f6ee;">' +
+                           escapeHtml(String(v || '-')) + '</span>' };
+          }
+        });
+      }
+      return cols;
+    }
+
+    function renderBillableLikeTable(tbl, footer, rows, sortAccessors) {
+      var columns = buildDailyColumns();
+      var totalHours = 0;
+      rows.forEach(function (r) { totalHours += Number(r.hours) || 0; });
+      var totalsExtra = {
+        totals: {
+          firstCellLabel: 'Tasks: ' + rows.length,
+          sums: { hours: round2(totalHours) }
+        }
+      };
+      renderGenericTable(tbl, columns, rows, sortAccessors, footer, totalsExtra);
+    }
+
+    function renderBillableTable() {
+      var tbl = document.querySelector('#billableTable .data-table');
+      var footer = document.getElementById('billableTableFooter');
+      if (!tbl) return;
+      var rows = getVisibleRows().filter(function (r) {
+        return String(r.billability || '').toUpperCase() === 'YES';
+      });
+      renderBillableLikeTable(tbl, footer, rows, {
+        getSort: function () { return state.billableSort; },
+        setSort: function (s) { state.billableSort = s; renderBillableTable(); }
+      });
+    }
+
+    function renderNonBillableTable() {
+      var tbl = document.querySelector('#nonBillableTable .data-table');
+      var footer = document.getElementById('nonBillableTableFooter');
+      if (!tbl) return;
+      var rows = getVisibleRows().filter(function (r) {
+        return String(r.billability || '').toUpperCase() !== 'YES';
+      });
+      renderBillableLikeTable(tbl, footer, rows, {
+        getSort: function () { return state.nonBillableSort; },
+        setSort: function (s) { state.nonBillableSort = s; renderNonBillableTable(); }
+      });
+    }
+
+    // ===================================================================
+    // CSV download
+    // ===================================================================
+    function csvCell(value) {
+      var s = (value == null) ? '' : String(value);
+      if (/[",\r\n]/.test(s)) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }
+    function downloadCsv(name, columns, rows) {
+      var lines = [];
+      lines.push(columns.map(function (c) { return csvCell(c.label); }).join(','));
+      rows.forEach(function (r) {
+        var cells = columns.map(function (c) {
+          var v = r[c.key];
+          // CSV exports keep the raw value (no HTML markup): for hours
+          // and dates we still pass the underlying number/string,
+          // not the formatted glyph, so spreadsheets can sort.
+          return csvCell(v);
+        });
+        lines.push(cells.join(','));
+      });
+      var csv = lines.join('\r\n');
+      var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      var url;
+      try { url = URL.createObjectURL(blob); } catch (e) { return; }
+      var d = new Date();
+      var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+      var stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'qa-tasks-' + name + '-' + stamp + '.csv';
+      document.body.appendChild(a);
+      try { a.click(); } catch (e) {}
+      document.body.removeChild(a);
+      try { URL.revokeObjectURL(url); } catch (e) {}
+    }
+
+    function csvColumnsFor(kind) {
+      if (kind === 'client') {
+        var cols = [
+          { key: 'client',           label: 'Client' },
+          { key: 'tasks',            label: 'Tasks' },
+          { key: 'totalHours',       label: 'Total hrs' },
+          { key: 'billableHours',    label: 'Billable hrs' },
+          { key: 'nonBillableHours', label: 'Non-Billable hrs' },
+          { key: 'completedCount',   label: 'Completed' },
+          { key: 'inProgressCount',  label: 'In-Progress' },
+          { key: 'otherCount',       label: 'Other' },
+          { key: 'totalBugs',        label: 'Bugs' }
+        ];
+        if (state.selected === 'All') cols.push({ key: 'members', label: 'Members' });
+        return cols;
+      }
+      // billable / non-billable share the daily-task column shape.
+      var dcols = [
+        { key: 'sNo',             label: 'S No' },
+        { key: 'date',            label: 'Date' },
+        { key: 'client',          label: 'Client' },
+        { key: 'projectName',     label: 'Project' },
+        { key: 'hours',           label: 'Hours' },
+        { key: 'billability',     label: 'Billability' },
+        { key: 'status',          label: 'Status' },
+        { key: 'noOfBugs',        label: 'Bugs' },
+        { key: 'bugsDescription', label: 'Description' }
+      ];
+      if (state.selected === 'All') {
+        dcols.splice(1, 0, { key: 'member', label: 'Member' });
+      }
+      return dcols;
+    }
+
+    function csvRowsFor(kind) {
+      if (kind === 'client') return aggregateByClient(getVisibleRows());
+      if (kind === 'billable') {
+        return getVisibleRows().filter(function (r) {
+          return String(r.billability || '').toUpperCase() === 'YES';
+        });
+      }
+      if (kind === 'non-billable') {
+        return getVisibleRows().filter(function (r) {
+          return String(r.billability || '').toUpperCase() !== 'YES';
+        });
+      }
+      return [];
     }
 
     // ===================================================================
@@ -1675,8 +2494,16 @@
         card.classList.toggle('is-selected', active);
         card.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      // Re-render the cards so the headline / progress / sparkline /
+      // ribbon update to reflect the new selection's visual state.
+      renderCards();
+      renderSparklines();
+      renderTotalsStrip();
       renderCharts();
       renderTable();
+      renderClientTable();
+      renderBillableTable();
+      renderNonBillableTable();
     }
 
     // ===================================================================
@@ -1723,6 +2550,30 @@
         search.addEventListener('input', function (e) {
           state.search = e.target.value || '';
           renderTable();
+          renderClientTable();
+          renderBillableTable();
+          renderNonBillableTable();
+        });
+      }
+      // Delegated CSV download click: any element with data-csv inside
+      // #app fires the right export. Snapshot rows + columns at click
+      // time so the download reflects the current selection / filter.
+      var appEl = document.getElementById('app');
+      if (appEl) {
+        appEl.addEventListener('click', function (e) {
+          var t = e.target;
+          var btn = null;
+          while (t && t !== appEl) {
+            if (t.nodeType === 1 && t.getAttribute && t.getAttribute('data-csv')) {
+              btn = t; break;
+            }
+            t = t.parentNode;
+          }
+          if (!btn) return;
+          var kind = btn.getAttribute('data-csv');
+          var cols = csvColumnsFor(kind);
+          var rows = csvRowsFor(kind);
+          downloadCsv(kind, cols, rows);
         });
       }
       window.addEventListener('resize', resizeCharts);
@@ -1806,8 +2657,13 @@
 
         renderButtons();
         renderCards();
+        renderSparklines();
+        renderTotalsStrip();
         renderCharts();
         renderTable();
+        renderClientTable();
+        renderBillableTable();
+        renderNonBillableTable();
         setUpdatedAt();
       }).catch(function (err) {
         // Should be unreachable with allSettled, but keep a hard
@@ -1821,8 +2677,13 @@
         showMockNotice(err && err.message ? err.message : '');
         renderButtons();
         renderCards();
+        renderSparklines();
+        renderTotalsStrip();
         renderCharts();
         renderTable();
+        renderClientTable();
+        renderBillableTable();
+        renderNonBillableTable();
         setUpdatedAt();
       });
     }
