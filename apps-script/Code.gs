@@ -1,6 +1,6 @@
 /**
  * Code.gs - Combined server-side logic for the
- * "QA - Daily Status Dashboard" Google Apps Script web app.
+ * "QA-Tasks History" Google Apps Script web app.
  *
  * Responsibilities:
  *   - Serve History.html via doGet().
@@ -279,6 +279,13 @@ function trimStr_(value) {
  * have HOURS = 0, so numeric 0 (and any other number) and Date
  * objects always count as PRESENT; only null / undefined / '' /
  * whitespace-only strings count as blank.
+ *
+ * Edge case worth knowing: because the gate is an AND across all five
+ * cells, a row that has ONLY S NO populated (e.g. a stray serial
+ * number in column A with everything else blank) still passes and is
+ * kept as a "real" row. This matches the pre-change behavior - the
+ * sheet shape is owned by humans and a stray number in column A is
+ * rare in practice - so it is documented here rather than blocked.
  *
  * @private
  * @param {Array} row Raw row from Sheet.getValues(); only indices 0..4

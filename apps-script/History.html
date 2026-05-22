@@ -1951,18 +1951,20 @@
       return rows;
     }
 
-    function applySearchAndSort(rows) {
+    function applySearchFilter(rows) {
       var q = String(state.search || '').trim().toLowerCase();
-      var filtered = rows;
-      if (q) {
-        filtered = rows.filter(function (r) {
-          var hay = [
-            r.sNo, r.date, r.client, r.projectName, r.hours,
-            r.billability, r.status, r.noOfBugs, r.bugsDescription, r.member
-          ].join(' ').toLowerCase();
-          return hay.indexOf(q) !== -1;
-        });
-      }
+      if (!q) return rows;
+      return rows.filter(function (r) {
+        var hay = [
+          r.sNo, r.date, r.client, r.projectName, r.hours,
+          r.billability, r.status, r.noOfBugs, r.bugsDescription, r.member
+        ].join(' ').toLowerCase();
+        return hay.indexOf(q) !== -1;
+      });
+    }
+
+    function applySearchAndSort(rows) {
+      var filtered = applySearchFilter(rows);
       var sortKey = state.sort.key;
       var dir = state.sort.dir === 'asc' ? 1 : -1;
       var col = getColumns().filter(function (c) { return c.key === sortKey; })[0];
@@ -2208,8 +2210,20 @@
       }
 
       if (footerEl) {
-        var msg = 'Showing ' + sorted.length + ' of ' + rows.length + ' rows';
-        if (state.search) msg += ' \u2022 filter: "' + state.search + '"';
+        // The breakdown render paths now pre-filter `rows` by
+        // state.search, which collapses the ratio to N of N. When an
+        // unfiltered total is supplied via `extra.unfilteredCount`,
+        // surface that as the denominator so the user can see how
+        // many rows the search hid; the `filter: "X"` suffix is then
+        // only appended when a search is active AND it actually hid
+        // something, so the footer no longer reads `N of N • filter`.
+        var unfiltered = (extra && typeof extra.unfilteredCount === 'number')
+          ? extra.unfilteredCount
+          : rows.length;
+        var msg = 'Showing ' + sorted.length + ' of ' + unfiltered + ' rows';
+        if (state.search && unfiltered !== sorted.length) {
+          msg += ' \u2022 filter: "' + state.search + '"';
+        }
         footerEl.textContent = msg;
       }
     }
@@ -2264,7 +2278,8 @@
       var tbl = document.querySelector('#clientTable .data-table');
       var footer = document.getElementById('clientTableFooter');
       if (!tbl) return;
-      var rows = aggregateByClient(getVisibleRows());
+      var unfiltered = aggregateByClient(getVisibleRows());
+      var rows = aggregateByClient(applySearchFilter(getVisibleRows()));
       var columns = [
         { key: 'client',           label: 'Client',         type: 'text' },
         { key: 'tasks',            label: 'Tasks',          type: 'number', align: 'right' },
@@ -2276,6 +2291,7 @@
           format: function (v) { return fmtHours(v); } },
         { key: 'completedCount',   label: 'Completed',      type: 'number', align: 'right' },
         { key: 'inProgressCount',  label: 'In-Progress',    type: 'number', align: 'right' },
+        { key: 'otherCount',       label: 'Other',          type: 'number', align: 'right' },
         { key: 'totalBugs',        label: 'Bugs',           type: 'number', align: 'right' }
       ];
       if (state.selected === 'All') {
@@ -2285,7 +2301,8 @@
         getSort: function () { return state.clientSort; },
         setSort: function (s) { state.clientSort = s; renderClientTable(); }
       };
-      renderGenericTable(tbl, columns, rows, accessors, footer);
+      renderGenericTable(tbl, columns, rows, accessors, footer,
+        { unfilteredCount: unfiltered.length });
     }
 
     function buildDailyColumns() {
@@ -2334,7 +2351,7 @@
       return cols;
     }
 
-    function renderBillableLikeTable(tbl, footer, rows, sortAccessors) {
+    function renderBillableLikeTable(tbl, footer, rows, sortAccessors, unfilteredCount) {
       var columns = buildDailyColumns();
       var totalHours = 0;
       rows.forEach(function (r) { totalHours += Number(r.hours) || 0; });
@@ -2342,7 +2359,8 @@
         totals: {
           firstCellLabel: 'Tasks: ' + rows.length,
           sums: { hours: round2(totalHours) }
-        }
+        },
+        unfilteredCount: (typeof unfilteredCount === 'number') ? unfilteredCount : rows.length
       };
       renderGenericTable(tbl, columns, rows, sortAccessors, footer, totalsExtra);
     }
@@ -2351,26 +2369,28 @@
       var tbl = document.querySelector('#billableTable .data-table');
       var footer = document.getElementById('billableTableFooter');
       if (!tbl) return;
-      var rows = getVisibleRows().filter(function (r) {
+      var unfiltered = getVisibleRows().filter(function (r) {
         return String(r.billability || '').toUpperCase() === 'YES';
       });
+      var rows = applySearchFilter(unfiltered);
       renderBillableLikeTable(tbl, footer, rows, {
         getSort: function () { return state.billableSort; },
         setSort: function (s) { state.billableSort = s; renderBillableTable(); }
-      });
+      }, unfiltered.length);
     }
 
     function renderNonBillableTable() {
       var tbl = document.querySelector('#nonBillableTable .data-table');
       var footer = document.getElementById('nonBillableTableFooter');
       if (!tbl) return;
-      var rows = getVisibleRows().filter(function (r) {
+      var unfiltered = getVisibleRows().filter(function (r) {
         return String(r.billability || '').toUpperCase() !== 'YES';
       });
+      var rows = applySearchFilter(unfiltered);
       renderBillableLikeTable(tbl, footer, rows, {
         getSort: function () { return state.nonBillableSort; },
         setSort: function (s) { state.nonBillableSort = s; renderNonBillableTable(); }
-      });
+      }, unfiltered.length);
     }
 
     // ===================================================================
@@ -2447,14 +2467,14 @@
     }
 
     function csvRowsFor(kind) {
-      if (kind === 'client') return aggregateByClient(getVisibleRows());
+      if (kind === 'client') return aggregateByClient(applySearchFilter(getVisibleRows()));
       if (kind === 'billable') {
-        return getVisibleRows().filter(function (r) {
+        return applySearchFilter(getVisibleRows()).filter(function (r) {
           return String(r.billability || '').toUpperCase() === 'YES';
         });
       }
       if (kind === 'non-billable') {
-        return getVisibleRows().filter(function (r) {
+        return applySearchFilter(getVisibleRows()).filter(function (r) {
           return String(r.billability || '').toUpperCase() !== 'YES';
         });
       }
