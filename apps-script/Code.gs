@@ -77,7 +77,7 @@ function getSpreadsheet_() {
  */
 function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('History')
-    .setTitle('QA - Daily Status Dashboard')
+    .setTitle('QA-Tasks History')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -262,23 +262,39 @@ function trimStr_(value) {
 }
 
 /**
+ * Decide whether a sheet row should be skipped as an "empty separator".
+ *
+ * The QA tabs use blank separator rows between day groups. Earlier
+ * versions of this function treated a row as empty only when all ten
+ * columns (A..J) were blank, but in practice the trailing columns
+ * (Billability, Status, Bug Captured, No of Bugs, Bugs Description)
+ * are sometimes filled in alone (for example, a stray "PENDING"
+ * status pill on an otherwise blank row). Such rows do not represent
+ * real work and should still be dropped.
+ *
+ * The new heuristic looks at exactly five columns - S NO, DATE,
+ * CLIENT, PROJECT NAME, HOURS - and treats the row as empty iff EVERY
+ * one of those is blank or whitespace-only. Columns F..J are not
+ * considered for the emptiness decision. A real task may legitimately
+ * have HOURS = 0, so numeric 0 (and any other number) and Date
+ * objects always count as PRESENT; only null / undefined / '' /
+ * whitespace-only strings count as blank.
+ *
  * @private
- * @param {Array} row
- * @return {boolean} True when every cell in columns A..J is blank.
+ * @param {Array} row Raw row from Sheet.getValues(); only indices 0..4
+ *     (S NO, DATE, CLIENT, PROJECT NAME, HOURS) are inspected.
+ * @return {boolean} True when ALL five gate cells are blank.
  */
 function isEmptyRow_(row) {
-  for (var i = 0; i < ROW_WIDTH_ && i < row.length; i++) {
-    var v = row[i];
-    if (v !== '' && v !== null && v !== undefined) {
-      // Treat whitespace-only strings as empty, too.
-      if (typeof v === 'string') {
-        if (v.trim().length > 0) return false;
-      } else {
-        return false;
-      }
-    }
+  function isBlank_(v) {
+    if (v === null || v === undefined) return true;
+    if (typeof v === 'string') return v.trim() === '';
+    // Numbers (including 0) and Date objects count as PRESENT.
+    return false;
   }
-  return true;
+  // Gate columns: A=S NO, B=DATE, C=CLIENT, D=PROJECT NAME, E=HOURS.
+  return isBlank_(row[0]) && isBlank_(row[1]) && isBlank_(row[2]) &&
+    isBlank_(row[3]) && isBlank_(row[4]);
 }
 
 /**
@@ -382,6 +398,7 @@ function summarize_(memberName, rows) {
   var billableHours = 0;
   var completedCount = 0;
   var inProgressCount = 0;
+  var otherCount = 0;
   var totalBugs = 0;
   var clients = {};
   for (var i = 0; i < rows.length; i++) {
@@ -394,6 +411,7 @@ function summarize_(memberName, rows) {
     }
     if (r.status === 'COMPLETED') completedCount++;
     else if (r.status === 'IN-PROGRESS' || r.status === 'IN PROGRESS') inProgressCount++;
+    else otherCount++;
     totalBugs += toNumber_(r.noOfBugs, 0);
     if (r.client) clients[r.client] = true;
   }
@@ -406,6 +424,7 @@ function summarize_(memberName, rows) {
     billableHours: round2_(billableHours),
     completedCount: completedCount,
     inProgressCount: inProgressCount,
+    otherCount: otherCount,
     totalBugs: totalBugs,
     distinctClients: distinctClients
   };
@@ -449,6 +468,7 @@ function getAllSummaries() {
       billableHours: 0,
       completedCount: 0,
       inProgressCount: 0,
+      otherCount: 0,
       totalBugs: 0,
       distinctClients: 0
     };
@@ -472,6 +492,7 @@ function getAllSummaries() {
       totals.billableHours += s.billableHours;
       totals.completedCount += s.completedCount;
       totals.inProgressCount += s.inProgressCount;
+      totals.otherCount += s.otherCount;
       totals.totalBugs += s.totalBugs;
       for (var j = 0; j < rows.length; j++) {
         if (rows[j].client) allClients[rows[j].client] = true;
@@ -491,8 +512,9 @@ function getAllSummaries() {
  * Public: data shaped for the dashboard charts.
  *
  *  - hoursPerMember: bar chart input [{member, hours}]
- *  - statusBreakdown: donut/pie [{label, value}] for COMPLETED vs
- *    IN-PROGRESS across the whole team
+ *  - statusBreakdown: donut/pie [{label, value}] for COMPLETED,
+ *    IN-PROGRESS and OTHER (anything not COMPLETED /
+ *    IN-PROGRESS / IN PROGRESS, including blanks) across the team
  *  - hoursPerDay: line chart, both per-member and 'all' aggregate
  *  - billableSplit: { billable, nonBillable } total hours.
  *  - bugsPerMember: [{member, bugs}]
@@ -505,7 +527,7 @@ function getChartData() {
     var bugsPerMember = [];
     var hoursPerDay = { all: [] };
     var allDayMap = {};
-    var statusCounts = { COMPLETED: 0, 'IN-PROGRESS': 0 };
+    var statusCounts = { COMPLETED: 0, 'IN-PROGRESS': 0, OTHER: 0 };
     var billable = 0;
     var nonBillable = 0;
 
@@ -531,9 +553,12 @@ function getChartData() {
         memBugs += toNumber_(r.noOfBugs, 0);
         if (r.billability === 'YES') billable += h;
         else nonBillable += h;
-        if (r.status === 'COMPLETED') statusCounts.COMPLETED++;
-        else if (r.status === 'IN-PROGRESS' || r.status === 'IN PROGRESS') {
+        if (r.status === 'COMPLETED') {
+          statusCounts.COMPLETED++;
+        } else if (r.status === 'IN-PROGRESS' || r.status === 'IN PROGRESS') {
           statusCounts['IN-PROGRESS']++;
+        } else {
+          statusCounts.OTHER++;
         }
         if (r.date) {
           memDayMap[r.date] = (memDayMap[r.date] || 0) + h;
@@ -550,7 +575,8 @@ function getChartData() {
       hoursPerMember: hoursPerMember,
       statusBreakdown: [
         { label: 'COMPLETED', value: statusCounts.COMPLETED },
-        { label: 'IN-PROGRESS', value: statusCounts['IN-PROGRESS'] }
+        { label: 'IN-PROGRESS', value: statusCounts['IN-PROGRESS'] },
+        { label: 'OTHER', value: statusCounts.OTHER }
       ],
       hoursPerDay: hoursPerDay,
       billableSplit: {

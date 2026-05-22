@@ -1,9 +1,10 @@
-# QA - Daily Status Dashboard (Google Apps Script)
+# QA-Tasks History (Google Apps Script)
 
-A Google Apps Script web app that reads the QA team's daily-status
-Google Sheet (one tab per QA: Isra, Sowmiya, Keerthana, Yogesh,
-Tamizharasi) and renders an interactive dashboard with KPI cards,
-charts, and a sortable / searchable task table.
+A Google Apps Script web app that renders the **QA-Tasks History**
+dashboard from the QA team's daily-status Google Sheet (one tab per
+QA: Isra, Sowmiya, Keerthana, Yogesh, Tamizharasi). The page shows
+KPI cards, charts, a sortable / searchable task table, and three
+breakdown tables with CSV download.
 
 This folder is a self-contained Apps Script project. There is no
 local build step. Source files in this folder are uploaded as-is to
@@ -42,27 +43,37 @@ attached to any sheet).
 
 ## File order
 
-In the Apps Script editor, create the files in this order. (Order is
-not strictly required for execution, but creating them in this order
-makes the manifest available before HTML files reference it.)
+After the consolidation refactor the project is exactly two source
+files plus the manifest. In the Apps Script editor, create them in
+this order:
 
 1. `appsscript.json` - manifest. Visible only after enabling
    **Project Settings > Show "appsscript.json" manifest file in
    editor**. Replace the default with the contents of
    `apps-script/appsscript.json`.
-2. `Code.gs` - entry point: `doGet`, `include` helper,
-   `SPREADSHEET_ID`, `MEMBER_SHEETS`, `getMembers`, `getConfig`.
-3. `DataService.gs` - sheet read, normalization, aggregation, chart
-   shaping. All public functions are cached for 60 seconds via
-   `CacheService`.
-4. `Index.html` - main page shell (added in FEAT-002).
-5. `Banner.html` - hero / member buttons partial (added in FEAT-002).
-6. `Stylesheet.html` - `<style>` block partial (added in FEAT-002).
-7. `Javascript.html` - `<script>` block partial (added in FEAT-002).
+2. `Code.gs` - server-side logic: `doGet`, `SPREADSHEET_ID`,
+   `MEMBER_SHEETS`, `getMembers`, `getConfig`, sheet I/O,
+   normalization, aggregation and chart shaping. All public reads
+   are cached for 60 seconds via `CacheService`.
+3. `History.html` - the entire client (CSS + markup + script in one
+   file). Loaded by `doGet` via
+   `HtmlService.createHtmlOutputFromFile('History')`.
 
-> The four HTML files are introduced by FEAT-002. After FEAT-001
-> alone the project will not yet render a page; the server-side
-> foundation is what FEAT-001 ships.
+## Breakdown tables
+
+Below the main daily-tasks table, the page renders three additional
+tables for cross-checking the totals:
+
+- **Client-wise summary** - one row per distinct client with task
+  count, total / billable / non-billable hours, status counts and
+  bugs.
+- **Billable tasks** - all rows where `Billability` is `YES`.
+- **Non-Billable tasks** - all rows where `Billability` is anything
+  other than `YES`.
+
+Each table has a small CSV download button in its header that
+exports the currently-visible rows (search and member filter
+applied) as a `.csv` file.
 
 ## Deploy
 
@@ -71,7 +82,7 @@ Once the files are in place:
 1. Click **Deploy > New deployment**.
 2. For **Select type**, click the gear icon and pick **Web app**.
 3. Fill in:
-   - **Description**: `QA - Daily Status Dashboard`
+   - **Description**: `QA-Tasks History`
    - **Execute as**: `Me`
    - **Who has access**: `Anyone with Google account`
 4. Click **Deploy**. Apps Script will prompt you to authorize the
@@ -161,7 +172,7 @@ change to take effect.
 
 ## Cache TTL
 
-`DataService.gs` routes every public read through
+`Code.gs` routes every public read through
 `CacheService.getScriptCache()` with a TTL of **60 seconds** keyed
 by function name + arguments. This keeps the dashboard snappy when
 five users open it back-to-back, but means a fresh edit to the sheet
@@ -188,7 +199,7 @@ To bust the cache immediately:
   ```
 
   (Per-member keys look like `getMemberTasks::["Isra"]` etc.)
-- **Lower `CACHE_TTL_SECONDS_`** at the top of `DataService.gs` and
+- **Lower `CACHE_TTL_SECONDS_`** at the top of `Code.gs` and
   redeploy if you want shorter caching during active sheet edits.
 
 ## Optional: clasp
