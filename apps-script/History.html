@@ -38,7 +38,7 @@
     --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
   *, *::before, *::after { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
+  html, body { margin: 0; padding: 0; width: 100%; overflow-x: hidden; }
   body {
     min-height: 100vh;
     color: var(--text);
@@ -51,7 +51,6 @@
       radial-gradient(900px 600px at 110% 10%, rgba(255,107,154,0.18), transparent 60%),
       linear-gradient(180deg, var(--bg-0), var(--bg-1));
     background-attachment: fixed;
-    overflow-x: hidden;
   }
   body::before {
     content: '';
@@ -67,11 +66,12 @@
     0%   { transform: translate3d(0,0,0) rotate(0deg); }
     100% { transform: translate3d(2%,1%,0) rotate(0.6deg); }
   }
-  #app { position: relative; z-index: 1; }
+  #app { position: relative; z-index: 1; width: 100%; max-width: 100%; overflow-x: hidden; }
   main {
-    max-width: 1320px;
+    width: 100%;
+    max-width: 100%;
     margin: 0 auto;
-    padding: 24px 28px 40px;
+    padding: 24px 20px 40px;
     display: grid;
     gap: 28px;
   }
@@ -83,13 +83,16 @@
     outline-offset: 3px;
     border-radius: 6px;
   }
+
   /* Banner */
   .banner {
     position: relative;
     overflow: hidden;
-    padding: 48px 32px 40px;
+    padding: 48px 20px 40px;
     margin: 0 0 8px;
     border-radius: 0 0 28px 28px;
+    width: 100%;
+    max-width: 100%;
     background:
       linear-gradient(135deg, rgba(15,181,168,0.18), rgba(255,107,154,0.14)),
       linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0));
@@ -122,7 +125,8 @@
   }
   .banner__inner {
     position: relative;
-    max-width: 1320px;
+    max-width: 100%;
+    padding: 0 20px;
     margin: 0 auto;
     display: grid;
     grid-template-columns: 1.4fr 1fr;
@@ -198,17 +202,20 @@
     background: var(--teal);
   }
   .member-buttons button.is-active .dot { background: var(--pink-strong); }
-  /* Charts grid - responsive */
+
+  /* Charts grid */
   .charts {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 20px;
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
   }
   .chart-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 18px 18px 12px;
+    width: 100%;
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     box-shadow: var(--shadow);
@@ -217,6 +224,7 @@
   .chart-card:nth-child(1) { animation-delay: 60ms; }
   .chart-card:nth-child(2) { animation-delay: 140ms; }
   .chart-card:nth-child(3) { animation-delay: 220ms; }
+  .chart-card:nth-child(4) { animation-delay: 300ms; }
   .chart-card__header {
     display: flex;
     align-items: baseline;
@@ -228,12 +236,12 @@
   .chart-card__sub { color: var(--muted); font-size: 12px; }
   .chart-canvas {
     width: 100%;
-    min-height: 300px;
-    height: 40vh;
-    max-height: 500px;
+    min-height: 280px;
+    height: 35vh;
+    max-height: 450px;
   }
 
-  /* KPI cards - HORIZONTAL dashboard-metric-row design */
+  /* KPI Cards - 3D Flip Card Design */
   .cards__header {
     display: flex;
     align-items: baseline;
@@ -245,70 +253,93 @@
   .cards__sub { color: var(--muted); font-size: 13px; }
   .cards-grid {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+    perspective: 1000px;
+  }
+  @keyframes cardFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  @keyframes glowPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(15,181,168,0.3), 0 0 20px rgba(15,181,168,0.1); }
+    50% { box-shadow: 0 0 16px rgba(255,107,154,0.4), 0 0 40px rgba(255,107,154,0.15); }
   }
   .kpi-card {
     position: relative;
-    display: flex;
-    align-items: center;
-    gap: 16px;
+    transform-style: preserve-3d;
+    animation: cardFloat 4s ease-in-out infinite, glowPulse 3s ease-in-out infinite;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: transform 0.4s ease, box-shadow 0.3s ease;
+  }
+  .kpi-card:nth-child(1) { animation-delay: 0s, 0s; }
+  .kpi-card:nth-child(2) { animation-delay: 0.5s, 0.4s; }
+  .kpi-card:nth-child(3) { animation-delay: 1s, 0.8s; }
+  .kpi-card:nth-child(4) { animation-delay: 1.5s, 1.2s; }
+  .kpi-card:nth-child(5) { animation-delay: 2s, 1.6s; }
+  .kpi-card:hover {
+    transform: rotateY(8deg) rotateX(-5deg) translateZ(20px);
+    box-shadow: 0 20px 60px rgba(15,181,168,0.3), 0 0 30px rgba(255,107,154,0.2);
+  }
+  .kpi-card__face {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 16px 20px;
-    border-left: 4px solid var(--teal);
-    cursor: pointer;
+    border-radius: var(--radius-lg);
+    padding: 24px 20px;
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    box-shadow: var(--shadow-sm);
-    transition: transform var(--t-mid) ease, box-shadow var(--t-mid) ease, border-color var(--t-mid) ease, background-color var(--t-mid) ease;
-    animation: fadeUp 520ms cubic-bezier(.2,.7,.2,1) both;
-  }
-  .kpi-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow);
-    background: var(--surface-strong);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+    min-height: 200px;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
   }
   .kpi-card.is-selected {
+    animation: glowPulse 1.5s ease-in-out infinite;
+  }
+  .kpi-card.is-selected .kpi-card__face {
     border-color: var(--pink-strong);
-    border-left-color: var(--pink-strong);
-    box-shadow: 0 0 0 1px rgba(255,107,154,0.35) inset, 0 14px 36px rgba(255,107,154,0.22);
-    background: linear-gradient(135deg, rgba(255,107,154,0.10), rgba(15,181,168,0.08));
+    background: linear-gradient(135deg, rgba(255,107,154,0.12), rgba(15,181,168,0.08));
+    box-shadow: 0 0 0 1px rgba(255,107,154,0.35) inset;
   }
-  .kpi-card__left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 160px;
-  }
-  .avatar {
-    width: 42px; height: 42px;
+  .kpi-card .avatar {
+    width: 56px; height: 56px;
     border-radius: 50%;
     display: grid; place-items: center;
     color: #0f1720;
     font-weight: 800;
-    font-size: 14px;
+    font-size: 18px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.35);
-    flex: 0 0 42px;
+    flex: 0 0 56px;
   }
   .kpi-card__name {
     font-weight: 700;
-    font-size: 15px;
-    margin: 0;
-    white-space: nowrap;
+    font-size: 16px;
+    margin: 4px 0 0;
   }
   .kpi-card__role {
     font-size: 11px;
     color: var(--muted);
-    margin: 2px 0 0;
+    margin: 0;
+  }
+  .kpi-card__hours {
+    font-size: 26px;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--teal), var(--pink-strong));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin: 4px 0;
   }
   .kpi-card__stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    flex: 1;
-    min-width: 0;
+    justify-content: center;
+    gap: 6px;
   }
   .stat-chip {
     display: inline-flex;
@@ -316,7 +347,7 @@
     gap: 5px;
     padding: 4px 10px;
     border-radius: 999px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     background: rgba(255,255,255,0.05);
     border: 1px solid var(--border);
@@ -326,31 +357,7 @@
   .stat-chip--accent { border-color: rgba(15,181,168,0.4); color: #b9f6ee; }
   .stat-chip--warn { border-color: rgba(255,107,154,0.4); color: #ffd0e0; }
   .stat-chip--bug { border-color: rgba(255,182,72,0.4); color: #ffe0b3; }
-  .kpi-card__progress {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 120px;
-  }
-  .mini-progress {
-    flex: 1;
-    height: 6px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.08);
-    overflow: hidden;
-  }
-  .mini-progress__fill {
-    height: 100%;
-    border-radius: 999px;
-    background: linear-gradient(90deg, var(--teal), var(--pink-strong));
-    transition: width 600ms cubic-bezier(.2,.7,.2,1);
-  }
-  .mini-progress__label {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text);
-    white-space: nowrap;
-  }
+
   /* Per-member sections */
   .member-section {
     background: var(--surface);
@@ -410,7 +417,7 @@
   /* Client summary section */
   .client-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 14px;
   }
   .client-card {
@@ -440,12 +447,38 @@
   /* Table */
   .table-section__header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
     padding: 0 4px;
     margin-bottom: 12px;
+    flex-wrap: wrap;
   }
+  .table-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .sort-select {
+    appearance: none;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 32px 8px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239fb1bd'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    transition: border-color var(--t-fast);
+  }
+  .sort-select:focus { border-color: var(--pink-strong); outline: none; }
   .table-wrap {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -453,17 +486,17 @@
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     box-shadow: var(--shadow);
-    overflow: auto;
+    overflow-x: auto;
     width: 100%;
     max-width: 100%;
     min-height: 200px;
   }
   .data-table {
     width: 100%;
+    min-width: 100%;
     border-collapse: separate;
     border-spacing: 0;
     font-size: 13.5px;
-    min-width: 720px;
   }
   .data-table thead th {
     position: sticky;
@@ -579,7 +612,7 @@
     color: var(--text);
     font: inherit;
     font-size: 13px;
-    width: 260px;
+    width: 200px;
     padding: 4px 0;
   }
   .search input::placeholder { color: var(--muted); }
@@ -597,7 +630,8 @@
 
   /* Notice */
   .notice {
-    max-width: 1320px;
+    width: 100%;
+    max-width: 100%;
     margin: 12px auto 0;
     padding: 10px 16px;
     border-radius: 12px;
@@ -618,9 +652,10 @@
 
   /* Footer */
   .footer {
-    max-width: 1320px;
+    width: 100%;
+    max-width: 100%;
     margin: 8px auto 0;
-    padding: 18px 28px 28px;
+    padding: 18px 20px 28px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -637,25 +672,19 @@
   }
 
   /* Responsive */
-  @media (min-width: 1400px) {
-    main { max-width: 1480px; padding: 28px 36px 48px; }
-    .banner__inner { max-width: 1480px; }
-    .footer, .notice { max-width: 1480px; }
-  }
   @media (max-width: 900px) {
     .charts { grid-template-columns: 1fr; }
     .banner__inner { grid-template-columns: 1fr; gap: 16px; }
     .banner__art { display: none; }
-    .kpi-card { flex-direction: column; align-items: flex-start; }
-    .kpi-card__left { min-width: auto; }
-    .kpi-card__progress { width: 100%; }
+    .cards-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
   }
   @media (max-width: 720px) {
-    main { padding: 16px 16px 32px; gap: 22px; }
-    .banner { padding: 36px 20px 28px; border-radius: 0 0 22px 22px; }
+    main { padding: 16px 12px 32px; gap: 22px; }
+    .banner { padding: 36px 16px 28px; border-radius: 0 0 22px 22px; }
     .banner__title { font-size: 32px; }
-    .search input { width: 160px; }
+    .search input { width: 140px; }
     .table-section__header { flex-direction: column; align-items: flex-start; }
+    .table-controls { width: 100%; }
     .chart-canvas { min-height: 240px; height: 35vh; max-height: 400px; }
   }
   @media (max-width: 480px) {
@@ -664,8 +693,9 @@
     .search input { width: 100%; min-width: 0; }
     .cards__header, .table-section__header { flex-direction: column; align-items: flex-start; gap: 8px; }
     .banner__title { font-size: 26px; }
-    .charts { grid-template-columns: 1fr; }
+    .cards-grid { grid-template-columns: 1fr 1fr; }
     .client-grid { grid-template-columns: 1fr; }
+    .sort-select { width: 100%; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
@@ -674,6 +704,7 @@
       transition-duration: 0.001ms !important;
     }
     body::before { animation: none; }
+    .kpi-card { animation: none; }
     .kpi-card:hover { transform: none; }
   }
   </style>
@@ -762,12 +793,19 @@
           </div>
           <div id="chartTrend" class="chart-canvas" role="img" aria-label="Trend line chart"></div>
         </div>
+        <div class="chart-card" aria-label="Client distribution">
+          <div class="chart-card__header">
+            <h2>Client Distribution</h2>
+            <span class="chart-card__sub">Hours breakdown by client</span>
+          </div>
+          <div id="chartClient" class="chart-canvas" role="img" aria-label="Client horizontal bar chart"></div>
+        </div>
       </section>
 
       <section id="cards" aria-label="Per-member KPI cards">
         <div class="cards__header">
           <h2>Resource KPIs</h2>
-          <span class="cards__sub">Click any row to filter charts and table</span>
+          <span class="cards__sub">Click any card to filter charts and table</span>
         </div>
         <div id="cardsGrid" class="cards-grid"></div>
       </section>
@@ -784,12 +822,23 @@
       <section id="table" class="table-section" aria-label="Daily task table">
         <div class="table-section__header">
           <h2>Daily tasks</h2>
-          <label class="search">
-            <span class="search__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
-            </span>
-            <input id="tableSearch" type="search" placeholder="Search tasks, clients, projects..." aria-label="Search tasks">
-          </label>
+          <div class="table-controls">
+            <select id="sortSelect" class="sort-select" aria-label="Sort table">
+              <option value="date-desc">Sort by Date (newest first)</option>
+              <option value="date-asc">Sort by Date (oldest first)</option>
+              <option value="hours-desc">Sort by Hours (high to low)</option>
+              <option value="hours-asc">Sort by Hours (low to high)</option>
+              <option value="client-asc">Sort by Client (A-Z)</option>
+              <option value="status-asc">Sort by Status</option>
+              <option value="member-asc">Sort by Member</option>
+            </select>
+            <label class="search">
+              <span class="search__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+              </span>
+              <input id="tableSearch" type="search" placeholder="Search tasks, clients, projects..." aria-label="Search tasks">
+            </label>
+          </div>
         </div>
         <div class="table-wrap">
           <table id="taskTable" class="data-table">
@@ -841,7 +890,7 @@
       ],
       Tamizharasi: [
         { sNo: '1', date: '2025-08-18', client: 'Nasdaq',   projectName: 'Surveillance UI',  hours: 2.0, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
-        { sNo: '2', date: '2025-08-19', client: 'Humana',   projectName: 'Claims Portal',    hours: 3.5, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'YES', noOfBugs: 1, bugsDescription: 'Login redirect loops on Safari.' },
+        { sNo: '2', date: '2025-08-19', client: 'Humana',   projectName: 'Claims Portal',    hours: 3.5, billability: 'YES', status: 'COMPLETED',   bugCaptured: 'YES', noOfBugs: 1, bugsDescription: 'Login redirect loop on session timeout.' },
         { sNo: '3', date: '2025-08-19', client: 'Internal', projectName: 'Test Plan Review', hours: 1.5, billability: 'NO',  status: 'COMPLETED',   bugCaptured: 'NO',  noOfBugs: 0, bugsDescription: '' },
         { sNo: '4', date: '2025-08-20', client: 'Nasdaq',   projectName: 'Surveillance UI',  hours: 4.5, billability: 'YES', status: 'IN-PROGRESS', bugCaptured: 'YES', noOfBugs: 2, bugsDescription: 'Chart tooltip flicker; legend overlaps title.' }
       ]
@@ -975,7 +1024,7 @@
       expandedSections: {}
     };
 
-    var charts = { chart3d: null, chartStatus: null, chartTrend: null };
+    var charts = { chart3d: null, chartStatus: null, chartTrend: null, chartClient: null };
 
     // Helpers
     var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1045,7 +1094,7 @@
       return buildSummary(name, rows);
     }
 
-    // Render: KPI cards (horizontal row design)
+    // Render: KPI cards (3D flip card design)
     function renderCards() {
       var grid = $('#cardsGrid');
       if (!grid) return;
@@ -1054,33 +1103,24 @@
       members.forEach(function (name, idx) {
         var s = summaryFor(name);
         var color = hashHsl(name);
-        var pct = s.totalTasks > 0 ? Math.round((s.completedCount / s.totalTasks) * 100) : 0;
-        if (pct > 100) pct = 100;
 
         var card = document.createElement('article');
         card.className = 'kpi-card' + (state.selected === name ? ' is-selected' : '');
         card.setAttribute('role', 'button');
         card.setAttribute('tabindex', '0');
-        card.style.borderLeftColor = color;
-        card.style.animationDelay = (idx * 60) + 'ms';
+        card.style.animationDelay = (idx * 0.4) + 's, ' + (idx * 0.3) + 's';
 
         card.innerHTML =
-          '<div class="kpi-card__left">' +
+          '<div class="kpi-card__face">' +
             '<div class="avatar" style="background:' + escapeHtml(color) + '">' + escapeHtml(initials(name)) + '</div>' +
-            '<div><p class="kpi-card__name">' + escapeHtml(name) + '</p>' +
-            '<p class="kpi-card__role">QA Engineer</p></div>' +
-          '</div>' +
-          '<div class="kpi-card__stats">' +
-            chip('Tasks', s.totalTasks, '') +
-            chip('Hours', fmtHours(s.totalHours), 'stat-chip--accent') +
-            chip('Billable', fmtHours(s.billableHours), 'stat-chip--accent') +
-            chip('Done', s.completedCount, '') +
-            chip('Active', s.inProgressCount, 'stat-chip--warn') +
-            chip('Bugs', s.totalBugs, s.totalBugs > 0 ? 'stat-chip--bug' : '') +
-          '</div>' +
-          '<div class="kpi-card__progress">' +
-            '<div class="mini-progress"><div class="mini-progress__fill" style="width:' + pct + '%"></div></div>' +
-            '<span class="mini-progress__label">' + pct + '%</span>' +
+            '<p class="kpi-card__name">' + escapeHtml(name) + '</p>' +
+            '<p class="kpi-card__role">QA Engineer</p>' +
+            '<div class="kpi-card__hours">' + fmtHours(s.totalHours) + '</div>' +
+            '<div class="kpi-card__stats">' +
+              chip('Done', s.completedCount, '') +
+              chip('Active', s.inProgressCount, 'stat-chip--warn') +
+              chip('Bugs', s.totalBugs, s.totalBugs > 0 ? 'stat-chip--bug' : '') +
+            '</div>' +
           '</div>';
 
         card.addEventListener('click', function () {
@@ -1138,7 +1178,6 @@
             statsHtml + tableHtml +
           '</div>';
 
-        // Toggle click
         var hdr = section.querySelector('.member-section__header');
         hdr.addEventListener('click', function () {
           state.expandedSections[name] = !state.expandedSections[name];
@@ -1270,7 +1309,8 @@
       var key = state.sort.key;
       var dir = state.sort.dir === 'asc' ? 1 : -1;
       return rows.slice().sort(function (a, b) {
-        var av = a[key], bv = b[key];
+        var av = key === 'member' ? a._member : a[key];
+        var bv = key === 'member' ? b._member : b[key];
         if (av == null) av = '';
         if (bv == null) bv = '';
         if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
@@ -1306,6 +1346,7 @@
         th.addEventListener('click', function () {
           if (state.sort.key === key) state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
           else { state.sort.key = key; state.sort.dir = 'asc'; }
+          syncSortSelect();
           renderTable();
         });
         tr.appendChild(th);
@@ -1346,6 +1387,27 @@
       }
     }
 
+    // Sort select sync
+    function syncSortSelect() {
+      var sel = document.getElementById('sortSelect');
+      if (!sel) return;
+      var val = state.sort.key + '-' + state.sort.dir;
+      // Map member key
+      if (state.sort.key === '_member') val = 'member-' + state.sort.dir;
+      if (state.sort.key === 'member') val = 'member-' + state.sort.dir;
+      sel.value = val;
+    }
+
+    function applySortFromSelect(val) {
+      var parts = val.split('-');
+      var dir = parts[parts.length - 1];
+      var key = parts.slice(0, parts.length - 1).join('-');
+      if (key === 'member') key = 'member';
+      state.sort.key = key;
+      state.sort.dir = dir;
+      renderTable();
+    }
+
     // Render: Charts
     function renderCharts() {
       if (typeof echarts === 'undefined') return;
@@ -1358,7 +1420,6 @@
         if (charts.chart3d) { try { charts.chart3d.dispose(); } catch(e){} }
         charts.chart3d = echarts.init(el3d, null, { renderer: 'canvas' });
         var barData = cd.hoursPerMember || [];
-        var hasGL = typeof echarts.getMap === 'undefined' || true; // echarts-gl loaded
         var opt3d;
         try {
           opt3d = {
@@ -1371,7 +1432,6 @@
           };
           charts.chart3d.setOption(opt3d, true);
         } catch (e) {
-          // Fallback to 2D bar
           opt3d = {
             tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,32,0.92)', borderColor: 'rgba(255,255,255,0.12)', textStyle: { color: '#eaf2f4' } },
             xAxis: { type: 'category', data: barData.map(function(d){return d.member;}), axisLabel: { color: '#9fb1bd' } },
@@ -1424,12 +1484,46 @@
         }, true);
       }
 
-      // Resize handler
-      window.addEventListener('resize', debounce(function () {
-        if (charts.chart3d) charts.chart3d.resize();
-        if (charts.chartStatus) charts.chartStatus.resize();
-        if (charts.chartTrend) charts.chartTrend.resize();
-      }, 200));
+      // Client Distribution horizontal bar chart (4th chart)
+      var elClient = document.getElementById('chartClient');
+      if (elClient) {
+        if (charts.chartClient) { try { charts.chartClient.dispose(); } catch(e){} }
+        charts.chartClient = echarts.init(elClient, null, { renderer: 'canvas' });
+        var clientData = computeClientHours();
+        var clientColors = ['#0fb5a8', '#ff6b9a', '#ffb648', '#9fb1bd', '#ffd6e0', '#a78bfa', '#34d399', '#f87171'];
+        charts.chartClient.setOption({
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: 'rgba(15,23,32,0.92)', borderColor: 'rgba(255,255,255,0.12)', textStyle: { color: '#eaf2f4' } },
+          grid: { left: 10, right: 30, top: 10, bottom: 10, containLabel: true },
+          xAxis: { type: 'value', axisLabel: { color: '#9fb1bd', formatter: '{value}h' }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } },
+          yAxis: { type: 'category', data: clientData.map(function(d){ return d.client; }), axisLabel: { color: '#9fb1bd', fontSize: 12 }, axisTick: { show: false }, axisLine: { show: false } },
+          series: [{ type: 'bar', data: clientData.map(function(d, i){ return { value: d.hours, itemStyle: { color: clientColors[i % clientColors.length], borderRadius: [0, 6, 6, 0] } }; }), barWidth: '60%', label: { show: true, position: 'right', color: '#eaf2f4', fontSize: 11, formatter: function(p){ return p.value + 'h'; } } }]
+        }, true);
+      }
+
+      // Resize handler (attach once)
+      if (!window._chartResizeAttached) {
+        window._chartResizeAttached = true;
+        window.addEventListener('resize', debounce(function () {
+          if (charts.chart3d) charts.chart3d.resize();
+          if (charts.chartStatus) charts.chartStatus.resize();
+          if (charts.chartTrend) charts.chartTrend.resize();
+          if (charts.chartClient) charts.chartClient.resize();
+        }, 200));
+      }
+    }
+
+    function computeClientHours() {
+      var rows = getVisibleRows();
+      var map = Object.create(null);
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var cl = r.client || 'Unknown';
+        map[cl] = (map[cl] || 0) + (Number(r.hours) || 0);
+      }
+      var arr = [];
+      for (var k in map) if (Object.prototype.hasOwnProperty.call(map, k)) arr.push({ client: k, hours: round2(map[k]) });
+      arr.sort(function (a, b) { return a.hours - b.hours; }); // ascending for horizontal bar (bottom = smallest)
+      return arr;
     }
 
     function computeStatusBreakdown() {
@@ -1545,7 +1639,16 @@
           state.search = searchInput.value;
           renderTable();
           renderClientSummary();
+          renderCharts();
         }, 180));
+      }
+
+      // Sort select handler
+      var sortSelect = document.getElementById('sortSelect');
+      if (sortSelect) {
+        sortSelect.addEventListener('change', function () {
+          applySortFromSelect(sortSelect.value);
+        });
       }
     }
 
