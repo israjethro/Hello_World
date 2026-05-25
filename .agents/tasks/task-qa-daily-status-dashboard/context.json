@@ -1,0 +1,29 @@
+{
+  "project_type": "Greenfield Google Apps Script web app added to an otherwise nearly-empty repo (a 'Hello_World' repo containing only README.md and three pre-compiled Java samples in src/ and bin/). The new project is a Sheets-backed dashboard built with HtmlService.",
+  "language": "Apps Script (V8 JavaScript) for server .gs files; HTML/CSS/vanilla JS for client. Charts via ECharts loaded from a CDN at runtime in the user's browser.",
+  "build_system": "None. Apps Script projects are not built locally; source files (.gs, .html, appsscript.json) are uploaded to script.google.com (manually or via clasp) and Google's runtime executes them. No package manager or compile step.",
+  "test_framework": "None. There is no automated test framework available for Apps Script offline. Verification is limited to static checks (JSON validity, file existence, balance checks).",
+  "build_command": "N/A (no local build). For sanity: `python3 -c \"import json; json.load(open('apps-script/appsscript.json'))\"` to confirm the manifest parses.",
+  "test_command": "N/A. Use static checks: validate appsscript.json with `python3 -c \"import json,sys; json.load(open('apps-script/appsscript.json'))\"`; confirm every `include('Name')` token in the HTML files points to an existing `apps-script/Name.html`; confirm no .gs/.html file is empty.",
+  "verification_instructions": "1) Run `python3 -c \"import json; json.load(open('apps-script/appsscript.json'))\"` and confirm exit 0. 2) Run a Python script (or grep + ls) that extracts every `include('X')` reference from apps-script/*.html and asserts apps-script/X.html exists. 3) Confirm `apps-script/Code.gs` defines `doGet`, an `include` helper, a `SPREADSHEET_ID` constant, and uses `CacheService`. 4) Confirm `apps-script/appsscript.json` declares webapp config and SpreadsheetApp scope. 5) Confirm the existing Java files in src/ and class files in bin/ are unchanged (`git diff --stat src/ bin/` empty).",
+  "snapshot_or_generated_files": "None. There are no snapshots, fixtures, or generated artifacts in this repo. Apps Script does not produce build artifacts that get checked in.",
+  "setup_instructions": "No local setup required for development of the Apps Script source files - they are plain text. To deploy: the user opens https://script.google.com, creates a new project (or opens the bound script for the QA - Daily Status sheet via Extensions > Apps Script), pastes/uploads each file from apps-script/ keeping the filenames, sets SPREADSHEET_ID in Code.gs (or relies on the active spreadsheet when bound), then Deploy > New deployment > Web app.",
+  "environment_constraints": "Sandbox network mode is INTEGRATIONS_ONLY: no npm/clasp install, no remote image fetching at build time, no Docker. Runtimes available on host: python3 3.x and jq only - no node, no java, no javac, no deno. Therefore: (a) we cannot run `node --check` on .gs files, (b) we cannot exercise google.script.run, (c) we cannot run a real Apps Script project locally. ECharts and Google Fonts are loaded from CDNs at runtime in the end user's browser - that is allowed (it does not require network at build time). All assets used by the page at build time (banner illustration etc.) must be inline SVG / CSS, never remote-fetched during scaffolding.",
+  "contribution_requirements": "No CONTRIBUTING.md, no AGENTS.md, no .kiro/steering present. Repo is on branch `master`. Existing Java sample files (src/OneD.java, src/OneD2.java, src/TwoD.java and the bin/*.class artifacts) MUST be left untouched. New code goes under a new top-level folder `apps-script/`.",
+  "key_patterns": "There are no existing patterns to follow in this repo - it is essentially empty. The conventions to apply are Apps Script community standards: one server file per concern (Code.gs for entry/config, DataService.gs for sheet IO + aggregation), HTML partials included via `HtmlService`'s template scriptlet `<?!= include('FileName') ?>` where `include(name)` is a server helper that returns `HtmlService.createHtmlOutputFromFile(name).getContent()`. Server functions exposed to the client via `google.script.run.<fn>(...)` with `.withSuccessHandler` / `.withFailureHandler`. Cache reads with `CacheService.getScriptCache()` keyed by member name with a 60s TTL. Sheet rows: row 1 is a merged title, row 2 is the header (S NO, DATE, CLIENT, PROJECT NAME, HOURS, Billability, Status, Bug Captured, No of Bugs, Bugs Description), data starts row 3, fully-empty rows separate day groups and must be skipped. Member tab names: Isra, Sowmiya, Keerthana, Yogesh, Tamizharasi.",
+  "relevant_files": [
+    "README.md (top-level, currently just '# Hello_World' - leave alone)",
+    "src/OneD.java, src/OneD2.java, src/TwoD.java (Java samples - DO NOT MODIFY)",
+    "bin/*.class (compiled Java - DO NOT MODIFY)",
+    "apps-script/appsscript.json (NEW - manifest)",
+    "apps-script/Code.gs (NEW - doGet, include, SPREADSHEET_ID, member list, cache helpers)",
+    "apps-script/DataService.gs (NEW - sheet read + normalize + aggregate + chart shaping)",
+    "apps-script/Index.html (NEW - main shell, includes Banner/Stylesheet/Javascript)",
+    "apps-script/Banner.html (NEW - hero markup with inline SVG illustration and member buttons)",
+    "apps-script/Stylesheet.html (NEW - <style>...</style> block, theme + responsive layout)",
+    "apps-script/Javascript.html (NEW - <script>...</script> block, google.script.run + charts + table)",
+    "apps-script/README.md (NEW - deployment instructions)",
+    "apps-script/.clasp.json.example (NEW - optional convenience for clasp users)"
+  ],
+  "directory_structure": "Top of repo: README.md, src/ (Java samples), bin/ (Java .class artifacts), .git/. We will add a new sibling folder `apps-script/` that holds the entire Apps Script project. No other directories are touched."
+}

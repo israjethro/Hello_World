@@ -1,0 +1,42 @@
+{
+  "task_id": "task-qa-daily-status-dashboard",
+  "task_description": "Build a Google Apps Script web app called 'QA - Daily Status Dashboard' that reads the 5-tab QA team Google Sheet (members: Isra, Sowmiya, Keerthana, Yogesh, Tamizharasi) and renders an elegant dashboard with: (1) a banner + interactive per-member buttons, (2) a 3D-style chart section with smooth animations, (3) KPI cards for all 5 resources, and (4) a sortable/searchable filtered task table. All source files live under a new `apps-script/` folder; the existing Java samples in src/ and bin/ remain untouched.",
+  "status": "completed",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "n/a",
+    "docker_build": "skipped",
+    "summary": "No build or test runner exists for Apps Script offline; this was documented in context.json. Static verification: appsscript.json parses, all 9 server functions (doGet, include, getMembers, getConfig, getMemberTasks, getAllTasks, getMemberSummary, getAllSummaries, getChartData) defined, CacheService used 4x in DataService.gs, every <?!= include('X') ?> resolves to an existing apps-script/X.html, all CDN URLs are HTTPS, Javascript.html has both google.script.run wiring and a MOCK fallback, file sizes Banner=89 Index=95 Stylesheet=612 Javascript=1062 Code.gs=126 DataService.gs=516 README=198 lines after all review iterations. Existing src/, bin/, top-level README.md byte-identical. No Dockerfile in repo. test_quality is n/a because the project ships no automated test suite (Apps Script is impractical to run offline without node + apps-script-mock); behavior must be exercised in the deployed web app."
+  },
+  "review_iterations": [
+    {
+      "version": "v1",
+      "review_file": ".agents/tasks/task-qa-daily-status-dashboard/2026-05-21-102949-review.md",
+      "issues_raised": 15,
+      "fixed_in_code": 14,
+      "justified": 1,
+      "fix_commits": ["6e39297", "f29bd55", "29b767b"]
+    },
+    {
+      "version": "v2",
+      "review_file": ".agents/tasks/task-qa-daily-status-dashboard/2026-05-21-104624-review.md",
+      "issues_raised": 4,
+      "fixed_in_code": 4,
+      "justified": 0,
+      "fix_commits": ["5d00459", "3e7f793"]
+    },
+    {
+      "version": "v3",
+      "review_file": ".agents/tasks/task-qa-daily-status-dashboard/2026-05-21-105743-review.md",
+      "verdict": "APPROVED",
+      "residual_followups": [
+        "No automated tests (project-level constraint, no test framework offline).",
+        "Partial-mock state can still mix real and mock slices but is now legibly labelled by panel.",
+        "MOCK_MEMBERS and MEMBER_SHEETS are hand-coupled for fully-offline standalone preview when both getMembers and getAllTasks fail."
+      ]
+    }
+  ]
+}
