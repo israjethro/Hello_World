@@ -1,0 +1,474 @@
+/* ============================================================
+   CC DIGITAL — QA BUG TRACKER  ·  application logic
+   Works with window.BUG_DATA (array of 17-column records) and
+   window.APP_CONFIG (qaLead + team). In the Apps Script build the
+   same file is used; data is injected by the server instead.
+   ============================================================ */
+(function () {
+  "use strict";
+
+  /* ---------- column definition (matches the sheet, in order) ---------- */
+  var COLUMNS = [
+    { key: "sno",                label: "S NO",              type: "num" },
+    { key: "month",              label: "Month",             type: "str" },
+    { key: "receivedDate",       label: "Received Date",     type: "date" },
+    { key: "client",             label: "Client",            type: "str" },
+    { key: "project",            label: "Project",           type: "str" },
+    { key: "projectId",          label: "Project ID",        type: "str" },
+    { key: "requestor",          label: "Requestor",         type: "str" },
+    { key: "qaResource",         label: "QA Resource",       type: "str" },
+    { key: "productionResource", label: "Production Resource",type: "str" },
+    { key: "emailSubject",       label: "Email subject line",type: "str" },
+    { key: "typeOfQA",           label: "Type of QA",        type: "str" },
+    { key: "qaDeliveryDate",     label: "QA Delivery date",  type: "str" },
+    { key: "errorDescription",   label: "Error description", type: "str" },
+    { key: "comments",           label: "Comments",          type: "str" },
+    { key: "rounds",             label: "Number of Rounds",  type: "num" },
+    { key: "issues",             label: "Number of issues",  type: "num" },
+    { key: "bugReport",          label: "Bug Report",        type: "link" }
+  ];
+
+  var PALETTE = ["#6c5ce7", "#00d2ff", "#ff6b9d", "#ffb443", "#27e1a3", "#9b6bff", "#ff8a5b", "#23b5d3"];
+  var DATA = (window.BUG_DATA || []).slice();
+  var CFG  = window.APP_CONFIG || { qaLead: {}, team: [] };
+
+  /* ---------- helpers ---------- */
+  var $  = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); }
+  function initials(name) { return String(name || "?").trim().split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join("").toUpperCase(); }
+  function colorFor(str) { var h = 0, s = String(str || ""); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return PALETTE[h % PALETTE.length]; }
+  function isNum(v) { return v !== "" && v != null && !isNaN(Number(v)); }
+  function num(v) { return isNum(v) ? Number(v) : 0; }
+  function gradFor(str) { var a = colorFor(str), b = colorFor(str + "x"); return "linear-gradient(135deg," + a + "," + b + ")"; }
+
+  function countUp(el, target) {
+    var start = 0, dur = 1100, t0 = null;
+    function step(ts) { if (!t0) t0 = ts; var p = Math.min((ts - t0) / dur, 1); var e = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(start + (target - start) * e).toLocaleString(); if (p < 1) requestAnimationFrame(step); }
+    requestAnimationFrame(step);
+  }
+
+  /* ============================================================
+     1. BANNER — animated particle canvas + parallax orbs
+     ============================================================ */
+  function initBanner() {
+    var c = $("#banner-canvas"); if (!c) return;
+    var ctx = c.getContext("2d"), dots = [], W, H, mx = 0, my = 0;
+    function size() { W = c.width = c.offsetWidth; H = c.height = c.offsetHeight;
+      dots = []; var n = Math.min(90, Math.floor(W / 16));
+      for (var i = 0; i < n; i++) dots.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .4, vy: (Math.random() - .5) * .4, r: Math.random() * 2 + .6 }); }
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      for (var i = 0; i < dots.length; i++) {
+        var d = dots[i]; d.x += d.vx + mx * .006; d.y += d.vy + my * .006;
+        if (d.x < 0) d.x = W; if (d.x > W) d.x = 0; if (d.y < 0) d.y = H; if (d.y > H) d.y = 0;
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 7); ctx.fillStyle = "rgba(0,210,255,.7)"; ctx.fill();
+        for (var j = i + 1; j < dots.length; j++) {
+          var e = dots[j], dx = d.x - e.x, dy = d.y - e.y, dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 120) { ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(e.x, e.y);
+            ctx.strokeStyle = "rgba(108,92,231," + (1 - dist / 120) * .35 + ")"; ctx.lineWidth = .6; ctx.stroke(); }
+        }
+      }
+      requestAnimationFrame(draw);
+    }
+    window.addEventListener("resize", size);
+    window.addEventListener("mousemove", function (e) { mx = (e.clientX - W / 2); my = (e.clientY - H / 2);
+      $$(".orb").forEach(function (o, i) { var f = (i + 1) * .012; o.style.transform = "translate(" + (-mx * f) + "px," + (-my * f) + "px)"; }); });
+    size(); draw();
+  }
+
+  /* ============================================================
+     2. NAV — active link on scroll, mobile toggle, theme
+     ============================================================ */
+  function initNav() {
+    var links = $$("nav.menus a"), sections = links.map(function (a) { return $(a.getAttribute("href")); });
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { if (en.isIntersecting) {
+        links.forEach(function (l) { l.classList.toggle("active", l.getAttribute("href") === "#" + en.target.id); }); } });
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    sections.forEach(function (s) { if (s) obs.observe(s); });
+
+    var toggle = $("#navToggle"), menus = $("#menus");
+    toggle && toggle.addEventListener("click", function () { menus.classList.toggle("show"); });
+    links.forEach(function (l) { l.addEventListener("click", function () { menus.classList.remove("show"); }); });
+
+    var tb = $("#themeBtn");
+    tb && tb.addEventListener("click", function () {
+      var light = document.documentElement.getAttribute("data-theme") === "light";
+      document.documentElement.setAttribute("data-theme", light ? "dark" : "light");
+      tb.textContent = light ? "🌙" : "☀️";
+    });
+  }
+
+  /* ============================================================
+     3. BANNER STATS + DASHBOARD STAT CARDS
+     ============================================================ */
+  function uniq(arr) { return arr.filter(function (v, i) { return arr.indexOf(v) === i; }); }
+  function totals() {
+    return {
+      records: DATA.length,
+      issues:  DATA.reduce(function (s, r) { return s + num(r.issues); }, 0),
+      rounds:  DATA.reduce(function (s, r) { return s + num(r.rounds); }, 0),
+      clients: uniq(DATA.map(function (r) { return r.client; }).filter(function (c) { return c && c !== "NA"; })).length,
+      resources: uniq(DATA.map(function (r) { return r.qaResource; }).filter(Boolean)).length
+    };
+  }
+  function renderBannerStats() {
+    var t = totals();
+    var items = [["records", "Bug Records"], ["issues", "Total Issues"], ["clients", "Clients"], ["resources", "QA Engineers"]];
+    $("#bannerStats").innerHTML = items.map(function (it) {
+      return '<div class="bstat"><div class="num" data-c="' + t[it[0]] + '">0</div><div class="lbl">' + it[1] + '</div></div>';
+    }).join("");
+  }
+  function renderStatCards() {
+    var t = totals();
+    var avg = t.records ? (t.issues / t.records) : 0;
+    var cards = [
+      { ic: "🗂️", v: t.records, t: "Total Bug Records", g: "rgba(108,92,231,.18)" },
+      { ic: "🐞", v: t.issues, t: "Total Issues Logged", g: "rgba(255,92,124,.18)" },
+      { ic: "🔁", v: t.rounds, t: "Total QA Rounds", g: "rgba(0,210,255,.18)" },
+      { ic: "🏢", v: t.clients, t: "Active Clients", g: "rgba(255,180,67,.18)" },
+      { ic: "🧑‍💻", v: t.resources, t: "QA Resources", g: "rgba(39,225,163,.18)" },
+      { ic: "📊", v: avg.toFixed(1), t: "Avg Issues / Record", g: "rgba(155,107,255,.18)", raw: true }
+    ];
+    $("#statGrid").innerHTML = cards.map(function (c) {
+      return '<div class="stat" style="--g1:' + c.g + '"><div class="ic">' + c.ic + '</div>' +
+        '<div class="v" ' + (c.raw ? '' : 'data-c="' + c.v + '"') + '>' + (c.raw ? c.v : "0") + '</div>' +
+        '<div class="t">' + c.t + '</div></div>';
+    }).join("");
+  }
+
+  /* ============================================================
+     4. QA RESOURCE SECTIONS (cards + dropdown filter + sort)
+     ============================================================ */
+  function severity(n) { n = num(n); return n >= 8 ? "b-hi" : n >= 4 ? "b-mid" : "b-low"; }
+  function buildResourceData() {
+    var map = {};
+    DATA.forEach(function (r) {
+      var k = r.qaResource || "Unassigned";
+      (map[k] = map[k] || { name: k, rows: [], issues: 0, rounds: 0, clients: {} });
+      map[k].rows.push(r); map[k].issues += num(r.issues); map[k].rounds += num(r.rounds);
+      if (r.client) map[k].clients[r.client] = 1;
+    });
+    return Object.keys(map).map(function (k) { var o = map[k]; o.clientCount = Object.keys(o.clients).length; return o; });
+  }
+  function renderResources() {
+    var groups = buildResourceData();
+    var filter = $("#resFilter").value, sort = $("#resSort").value;
+    if (sort === "issues") groups.sort(function (a, b) { return b.issues - a.issues; });
+    else if (sort === "tasks") groups.sort(function (a, b) { return b.rows.length - a.rows.length; });
+    else groups.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    if (filter !== "ALL") groups = groups.filter(function (g) { return g.name === filter; });
+
+    $("#resWrap").innerHTML = groups.map(function (g) {
+      var col = colorFor(g.name);
+      var tasks = g.rows.slice().sort(function (a, b) { return num(b.issues) - num(a.issues); }).map(function (r) {
+        var tag = severity(r.issues);
+        return '<div class="task">' +
+          '<div class="row1"><span class="tag ' + tag + '" style="background:' + (tag === "b-hi" ? "rgba(255,92,124,.18)" : tag === "b-mid" ? "rgba(255,180,67,.18)" : "rgba(39,225,163,.18)") + '">' + esc(r.client || "—") + '</span>' +
+          '<span class="badge-num ' + tag + '">' + esc(r.issues) + ' 🐞</span></div>' +
+          '<h4>' + esc(r.project && r.project !== "NA" ? r.project : r.typeOfQA.split(",")[0]) + '</h4>' +
+          '<div class="desc">' + esc(r.errorDescription) + '</div>' +
+          '<div class="foot"><span class="pill">' + esc(r.month) + ' · R' + esc(r.rounds) + '</span>' +
+          (r.bugReport && r.bugReport.url ? '<a class="lnk" href="' + esc(r.bugReport.url) + '" target="_blank" rel="noopener">Bug Report ↗</a>' : '<span class="muted">No report</span>') +
+          '</div></div>';
+      }).join("");
+      return '<div class="res-card">' +
+        '<div class="res-top"><div class="avatar" style="background:' + gradFor(g.name) + '">' + initials(g.name) + '</div>' +
+        '<div class="meta"><h3>' + esc(g.name) + '</h3><span>' + g.rows.length + ' tasks · ' + g.clientCount + ' clients</span></div>' +
+        '<div class="res-kpis"><span class="chip brand">' + g.rows.length + ' tasks</span><span class="chip warn">' + g.issues + ' issues</span><span class="chip ok">' + g.rounds + ' rounds</span></div></div>' +
+        '<div class="task-grid">' + (tasks || '<div class="empty">No tasks.</div>') + '</div></div>';
+    }).join("") || '<div class="empty">No QA resources found.</div>';
+  }
+  function initResourceControls() {
+    var names = uniq(DATA.map(function (r) { return r.qaResource; }).filter(Boolean)).sort();
+    $("#resFilter").innerHTML = '<option value="ALL">All QA Resources</option>' + names.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join("");
+    $("#resFilter").addEventListener("change", renderResources);
+    $("#resSort").addEventListener("change", renderResources);
+  }
+
+  /* ============================================================
+     5. CLIENT-WISE BUGS
+     ============================================================ */
+  function buildClientData() {
+    var map = {};
+    DATA.forEach(function (r) {
+      var k = r.client || "Unknown";
+      (map[k] = map[k] || { name: k, rows: [], issues: 0, rounds: 0, qa: {} });
+      map[k].rows.push(r); map[k].issues += num(r.issues); map[k].rounds += num(r.rounds);
+      if (r.qaResource) map[k].qa[r.qaResource] = (map[k].qa[r.qaResource] || 0) + 1;
+    });
+    return Object.keys(map).map(function (k) { return map[k]; });
+  }
+  function renderClients() {
+    var clients = buildClientData(), sort = $("#clientSort").value;
+    var max = Math.max.apply(null, clients.map(function (c) { return c.issues; }).concat([1]));
+    if (sort === "issues") clients.sort(function (a, b) { return b.issues - a.issues; });
+    else if (sort === "records") clients.sort(function (a, b) { return b.rows.length - a.rows.length; });
+    else clients.sort(function (a, b) { return a.name.localeCompare(b.name); });
+
+    $("#clientGrid").innerHTML = clients.map(function (c, i) {
+      var col = colorFor(c.name);
+      return '<div class="client-card" data-client="' + esc(c.name) + '">' +
+        '<div class="glow" style="background:' + col + '"></div>' +
+        '<h3>' + esc(c.name) + '</h3><div class="ct">' + Object.keys(c.qa).length + ' QA engineer(s) · ' + c.rows.length + ' records</div>' +
+        '<div class="nums"><div><span style="color:' + col + '">' + c.issues + '</span><small>ISSUES</small></div>' +
+        '<div><span>' + c.rows.length + '</span><small>RECORDS</small></div>' +
+        '<div><span>' + c.rounds + '</span><small>ROUNDS</small></div></div>' +
+        '<div class="bar-track"><div class="bar-fill" data-w="' + Math.round(c.issues / max * 100) + '"></div></div></div>';
+    }).join("");
+
+    $$("#clientGrid .client-card").forEach(function (card) {
+      card.addEventListener("click", function () { openClientModal(card.getAttribute("data-client")); });
+    });
+    setTimeout(function () { $$("#clientGrid .bar-fill").forEach(function (b) { b.style.width = b.getAttribute("data-w") + "%"; }); }, 120);
+  }
+  function openClientModal(name) {
+    var c = buildClientData().filter(function (x) { return x.name === name; })[0]; if (!c) return;
+    var rows = c.rows.slice().sort(function (a, b) { return num(b.issues) - num(a.issues); });
+    var qaBreak = Object.keys(c.qa).map(function (k) { return '<span class="chip">' + esc(k) + ': ' + c.qa[k] + '</span>'; }).join(" ");
+    $("#modalTitle").textContent = name + " — Bug Breakdown";
+    $("#modalBody").innerHTML =
+      '<div class="kv"><b>Total Issues</b><span>' + c.issues + '</span></div>' +
+      '<div class="kv"><b>Total Records</b><span>' + c.rows.length + '</span></div>' +
+      '<div class="kv"><b>Total Rounds</b><span>' + c.rounds + '</span></div>' +
+      '<div class="kv"><b>QA Coverage</b><span style="display:flex;gap:6px;flex-wrap:wrap">' + qaBreak + '</span></div>' +
+      '<div style="margin-top:8px;font-weight:700">Records</div>' +
+      rows.map(function (r) {
+        return '<div class="task" style="margin-top:6px"><div class="row1"><span class="tag b-mid" style="background:rgba(255,180,67,.18)">' + esc(r.project || "—") + '</span><span class="badge-num ' + severity(r.issues) + '">' + esc(r.issues) + ' 🐞</span></div>' +
+          '<h4>' + esc(r.typeOfQA) + '</h4><div class="desc">' + esc(r.errorDescription) + '</div>' +
+          '<div class="foot"><span class="pill">' + esc(r.qaResource) + '</span>' +
+          (r.bugReport && r.bugReport.url ? '<a class="lnk" target="_blank" rel="noopener" href="' + esc(r.bugReport.url) + '">Report ↗</a>' : '<span class="muted">—</span>') + '</div></div>';
+      }).join("");
+    openModal();
+  }
+  function initClientControls() { $("#clientSort").addEventListener("change", renderClients); }
+
+  /* ============================================================
+     6. MASTER TABLE — search, multi-filter, sort, paginate, export
+     ============================================================ */
+  var tState = { search: "", client: "", qa: "", month: "", type: "", sortKey: "sno", sortDir: 1, page: 1, size: 15 };
+
+  function buildHead() {
+    $("#theadRow").innerHTML = COLUMNS.map(function (c) {
+      return '<th data-key="' + c.key + '">' + esc(c.label) + '<span class="sort">▲▼</span></th>';
+    }).join("");
+    $$("#theadRow th").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var k = th.getAttribute("data-key");
+        if (tState.sortKey === k) tState.sortDir *= -1; else { tState.sortKey = k; tState.sortDir = 1; }
+        tState.page = 1; renderTable();
+      });
+    });
+  }
+  function cellValue(r, key) { return key === "bugReport" ? (r.bugReport ? r.bugReport.text : "") : r[key]; }
+  function filteredRows() {
+    var q = tState.search.toLowerCase();
+    return DATA.filter(function (r) {
+      if (tState.client && r.client !== tState.client) return false;
+      if (tState.qa && r.qaResource !== tState.qa) return false;
+      if (tState.month && r.month !== tState.month) return false;
+      if (tState.type && String(r.typeOfQA).indexOf(tState.type) < 0) return false;
+      if (!q) return true;
+      return COLUMNS.some(function (c) { return String(cellValue(r, c.key) || "").toLowerCase().indexOf(q) >= 0; });
+    });
+  }
+  function sortRows(rows) {
+    var k = tState.sortKey, dir = tState.sortDir, col = COLUMNS.filter(function (c) { return c.key === k; })[0];
+    return rows.slice().sort(function (a, b) {
+      var x = cellValue(a, k), y = cellValue(b, k);
+      if (col && col.type === "num") return (num(x) - num(y)) * dir;
+      return String(x || "").localeCompare(String(y || ""), undefined, { numeric: true }) * dir;
+    });
+  }
+  function numBadge(v) { return isNum(v) ? '<span class="badge-num ' + severity(v) + '">' + esc(v) + '</span>' : esc(v); }
+  function renderTable() {
+    var rows = sortRows(filteredRows()), total = rows.length;
+    var pages = Math.max(1, Math.ceil(total / tState.size));
+    if (tState.page > pages) tState.page = pages;
+    var start = (tState.page - 1) * tState.size, slice = rows.slice(start, start + tState.size);
+
+    $("#tbody").innerHTML = slice.map(function (r) {
+      return "<tr>" + COLUMNS.map(function (c) {
+        var v = r[c.key];
+        if (c.key === "qaResource") return '<td><span class="qa-tag" style="background:' + colorFor(v) + '22;color:' + colorFor(v) + '">' + esc(v) + "</span></td>";
+        if (c.key === "issues" || c.key === "rounds") return '<td class="mono">' + numBadge(v) + "</td>";
+        if (c.key === "bugReport") return "<td>" + (r.bugReport && r.bugReport.url ? '<a class="lnk" target="_blank" rel="noopener" href="' + esc(r.bugReport.url) + '">' + esc(r.bugReport.text || "Open") + " ↗</a>" : esc(r.bugReport ? r.bugReport.text : "")) + "</td>";
+        if (c.key === "emailSubject" || c.key === "errorDescription" || c.key === "comments") return '<td title="' + esc(v) + '">' + esc(v) + "</td>";
+        if (c.key === "sno") return '<td class="mono">' + esc(v) + "</td>";
+        return "<td>" + esc(v) + "</td>";
+      }).join("") + "</tr>";
+    }).join("") || '<tr><td colspan="' + COLUMNS.length + '"><div class="empty">No records match your filters.</div></td></tr>';
+
+    // header sort markers
+    $$("#theadRow th").forEach(function (th) {
+      var on = th.getAttribute("data-key") === tState.sortKey; th.classList.toggle("sorted", on);
+      th.querySelector(".sort").textContent = on ? (tState.sortDir > 0 ? "▲" : "▼") : "▲▼";
+    });
+
+    $("#resultInfo").textContent = total ? ("Showing " + (start + 1) + "–" + Math.min(start + tState.size, total) + " of " + total + " records") : "0 records";
+    renderPager(pages);
+  }
+  function renderPager(pages) {
+    var p = tState.page, out = [];
+    function btn(label, page, opts) { opts = opts || {}; return '<button ' + (opts.active ? 'class="active"' : "") + (opts.disabled ? " disabled" : "") + ' data-p="' + page + '">' + label + "</button>"; }
+    out.push(btn("«", 1, { disabled: p === 1 }));
+    out.push(btn("‹", p - 1, { disabled: p === 1 }));
+    var from = Math.max(1, p - 2), to = Math.min(pages, p + 2);
+    if (from > 1) out.push('<span class="muted">…</span>');
+    for (var i = from; i <= to; i++) out.push(btn(i, i, { active: i === p }));
+    if (to < pages) out.push('<span class="muted">…</span>');
+    out.push(btn("›", p + 1, { disabled: p === pages }));
+    out.push(btn("»", pages, { disabled: p === pages }));
+    $("#pager").innerHTML = out.join("");
+    $$("#pager button").forEach(function (b) { b.addEventListener("click", function () { if (b.disabled) return; tState.page = +b.getAttribute("data-p"); renderTable(); $("#records").scrollIntoView({ behavior: "smooth" }); }); });
+  }
+  function exportCSV() {
+    var rows = sortRows(filteredRows());
+    var head = COLUMNS.map(function (c) { return '"' + c.label + '"'; }).join(",");
+    var body = rows.map(function (r) {
+      return COLUMNS.map(function (c) {
+        var v = c.key === "bugReport" ? (r.bugReport ? (r.bugReport.text + (r.bugReport.url ? " (" + r.bugReport.url + ")" : "")) : "") : r[c.key];
+        return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+      }).join(",");
+    }).join("\n");
+    var blob = new Blob([head + "\n" + body], { type: "text/csv;charset=utf-8;" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = "qa-bug-tracker-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+  }
+  function initTableControls() {
+    function opts(values, label) { return '<option value="">' + label + '</option>' + values.map(function (v) { return '<option>' + esc(v) + '</option>'; }).join(""); }
+    var clients = uniq(DATA.map(function (r) { return r.client; }).filter(Boolean)).sort();
+    var qas     = uniq(DATA.map(function (r) { return r.qaResource; }).filter(Boolean)).sort();
+    var months  = uniq(DATA.map(function (r) { return r.month; }).filter(Boolean));
+    var types   = uniq(DATA.reduce(function (acc, r) { return acc.concat(String(r.typeOfQA).split(",").map(function (s) { return s.trim(); })); }, []).filter(Boolean)).sort();
+    $("#fClient").innerHTML = opts(clients, "All Clients");
+    $("#fQA").innerHTML     = opts(qas, "All QA Resources");
+    $("#fMonth").innerHTML  = opts(months, "All Months");
+    $("#fType").innerHTML   = opts(types, "All QA Types");
+
+    var deb; $("#globalSearch").addEventListener("input", function (e) { clearTimeout(deb); var val = e.target.value; deb = setTimeout(function () { tState.search = val; tState.page = 1; renderTable(); }, 160); });
+    $("#fClient").addEventListener("change", function (e) { tState.client = e.target.value; tState.page = 1; renderTable(); });
+    $("#fQA").addEventListener("change", function (e) { tState.qa = e.target.value; tState.page = 1; renderTable(); });
+    $("#fMonth").addEventListener("change", function (e) { tState.month = e.target.value; tState.page = 1; renderTable(); });
+    $("#fType").addEventListener("change", function (e) { tState.type = e.target.value; tState.page = 1; renderTable(); });
+    $("#pageSize").addEventListener("change", function (e) { tState.size = +e.target.value; tState.page = 1; renderTable(); });
+    $("#clearFilters").addEventListener("click", function () {
+      tState = { search: "", client: "", qa: "", month: "", type: "", sortKey: "sno", sortDir: 1, page: 1, size: tState.size };
+      $("#globalSearch").value = ""; $("#fClient").value = ""; $("#fQA").value = ""; $("#fMonth").value = ""; $("#fType").value = ""; renderTable();
+    });
+    $("#exportBtn").addEventListener("click", exportCSV);
+  }
+
+  /* ============================================================
+     7. ANALYTICS — bar charts + donut (pure SVG/CSS)
+     ============================================================ */
+  function aggregate(keyFn) {
+    var m = {}; DATA.forEach(function (r) { var k = keyFn(r); if (!k) return; m[k] = (m[k] || 0) + num(r.issues); });
+    return Object.keys(m).map(function (k) { return { name: k, value: m[k] }; }).sort(function (a, b) { return b.value - a.value; });
+  }
+  function barChart(title, icon, data) {
+    var max = Math.max.apply(null, data.map(function (d) { return d.value; }).concat([1]));
+    var rows = data.slice(0, 8).map(function (d, i) {
+      var col = PALETTE[i % PALETTE.length];
+      return '<div class="bar-row"><span class="name" title="' + esc(d.name) + '">' + esc(d.name) + '</span>' +
+        '<div class="track"><div class="fill" style="background:linear-gradient(90deg,' + col + ',' + col + '99)" data-w="' + Math.round(d.value / max * 100) + '"></div></div>' +
+        '<span class="val">' + d.value + '</span></div>';
+    }).join("");
+    return '<div class="chart-card"><h3>' + icon + ' ' + title + '</h3><div class="bars">' + rows + '</div></div>';
+  }
+  function donutChart(title, icon, data) {
+    var total = data.reduce(function (s, d) { return s + d.value; }, 0) || 1, off = 0, r = 52, circ = 2 * Math.PI * r;
+    var segs = data.slice(0, 6).map(function (d, i) {
+      var frac = d.value / total, len = frac * circ, col = PALETTE[i % PALETTE.length];
+      var seg = '<circle r="' + r + '" cx="70" cy="70" fill="none" stroke="' + col + '" stroke-width="20" stroke-dasharray="' + len + " " + (circ - len) + '" stroke-dashoffset="' + (-off) + '" transform="rotate(-90 70 70)"/>';
+      off += len; return seg;
+    }).join("");
+    var legend = data.slice(0, 6).map(function (d, i) { return '<div><i style="background:' + PALETTE[i % PALETTE.length] + '"></i>' + esc(d.name) + ' — <b>' + d.value + '</b></div>'; }).join("");
+    return '<div class="chart-card"><h3>' + icon + ' ' + title + '</h3><div class="donut-wrap">' +
+      '<svg width="140" height="140" viewBox="0 0 140 140">' + segs + '<text x="70" y="66" text-anchor="middle" fill="var(--text)" font-size="20" font-weight="800">' + total + '</text><text x="70" y="84" text-anchor="middle" fill="var(--muted)" font-size="10">ISSUES</text></svg>' +
+      '<div class="legend">' + legend + '</div></div></div>';
+  }
+  function renderCharts() {
+    var byClient = aggregate(function (r) { return r.client && r.client !== "NA" ? r.client : null; });
+    var byQA     = aggregate(function (r) { return r.qaResource; });
+    var byMonth  = aggregate(function (r) { return r.month; });
+    var byType   = aggregate(function (r) { return String(r.typeOfQA).split(",")[0].trim(); });
+    $("#charts").innerHTML =
+      barChart("Issues by Client", "🏢", byClient) +
+      barChart("Issues by QA Resource", "🧑‍💻", byQA) +
+      donutChart("Issues by Month", "📅", byMonth) +
+      barChart("Issues by QA Type", "🧪", byType);
+  }
+
+  /* ============================================================
+     8. FOOTER (lead + team)
+     ============================================================ */
+  function renderFooter() {
+    var lead = CFG.qaLead || {};
+    $("#leadCard").innerHTML =
+      '<div class="avatar" style="background:' + gradFor(lead.name || "Lead") + '">' + initials(lead.name) + '</div>' +
+      '<div><h4>' + esc(lead.name || "QA Lead") + '</h4><div class="role">' + esc(lead.role || "QA Lead") + '</div>' +
+      '<div class="ct">📧 ' + esc(lead.email || "") + (lead.phone ? '<br>📞 ' + esc(lead.phone) : "") + '</div></div>';
+    var team = (CFG.team || []);
+    $("#teamList").innerHTML = team.map(function (m) {
+      return '<div class="team-member"><div class="avatar" style="background:' + gradFor(m.name) + '">' + initials(m.name) + '</div>' +
+        '<div><b>' + esc(m.name) + '</b><small>' + esc(m.role || "QA Engineer") + '</small></div></div>';
+    }).join("");
+    $("#year").textContent = new Date().getFullYear();
+  }
+
+  /* ============================================================
+     9. REVEAL + COUNT-UP OBSERVERS
+     ============================================================ */
+  function initReveal() {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        en.target.classList.add("in");
+        $$("[data-c]", en.target).forEach(function (el) { if (!el.dataset.done) { el.dataset.done = 1; countUp(el, +el.getAttribute("data-c")); } });
+        io.unobserve(en.target);
+      });
+    }, { threshold: .12 });
+    $$(".reveal").forEach(function (el) { io.observe(el); });
+    // banner stats count up immediately
+    $$("#bannerStats [data-c]").forEach(function (el) { countUp(el, +el.getAttribute("data-c")); });
+  }
+
+  /* ---------- modal ---------- */
+  window.openModal = function () { $("#modal").classList.add("open"); };
+  window.closeModal = function () { $("#modal").classList.remove("open"); };
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeModal(); });
+
+  /* ============================================================
+     BOOT
+     ============================================================ */
+  function render() {
+    renderBannerStats(); renderStatCards();
+    initResourceControls(); renderResources();
+    initClientControls(); renderClients();
+    buildHead(); initTableControls(); renderTable();
+    renderCharts(); renderFooter();
+    initReveal();
+  }
+  function hideLoader() { var l = $("#loader"); if (l) l.classList.add("hide"); }
+  function boot() {
+    initBanner(); initNav();
+    // Apps Script build: pull live data from the Google Sheet. Demo build: use embedded BUG_DATA.
+    if (typeof google !== "undefined" && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function (payload) { window.__setData(payload.rows, payload.config); hideLoader(); })
+        .withFailureHandler(function (err) { console.error(err); render(); hideLoader();
+          var info = $("#resultInfo"); if (info) info.textContent = "Could not load sheet data: " + (err && err.message ? err.message : err); })
+        .getInitData();
+    } else {
+      render();
+      setTimeout(hideLoader, 450);
+    }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
+
+  // expose a hook so the Apps Script build can inject live data then re-render
+  window.__setData = function (rows, cfg) { DATA = rows || []; if (cfg) window.APP_CONFIG = CFG = cfg; render(); };
+})();
