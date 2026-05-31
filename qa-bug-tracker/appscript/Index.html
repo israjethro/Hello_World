@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_top">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CC Digital · QA Bug Tracker</title>
+<?!= include('Stylesheet'); ?>
+</head>
+<body>
+<!-- LOADER -->
+<div class="loader" id="loader"><div class="spinner"></div></div>
+
+<!-- HEADER -->
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8L12 2z" fill="#fff"/></svg>
+      </div>
+      <div>QA BugTracker<small>CC DIGITAL</small></div>
+    </div>
+    <button class="nav-toggle" id="navToggle">☰</button>
+    <nav class="menus" id="menus">
+      <a href="#dashboard" class="active"><span class="ico">📊</span>Dashboard</a>
+      <a href="#resources"><span class="ico">🧑‍💻</span>QA Resources</a>
+      <a href="#clients"><span class="ico">🏢</span>Clients</a>
+      <a href="#records"><span class="ico">🗂️</span>Master Table</a>
+      <a href="#analytics"><span class="ico">📈</span>Analytics</a>
+      <button class="theme-btn" id="themeBtn" title="Toggle theme">🌙</button>
+    </nav>
+  </div>
+</header>
+
+<!-- BANNER -->
+<div class="banner" id="top">
+  <canvas id="banner-canvas"></canvas>
+  <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div>
+  <div class="banner-inner">
+    <div>
+      <span class="badge"><span class="dot"></span> Live QA Quality Dashboard</span>
+      <h1>Track every bug.<br><span class="grad">Ship with confidence.</span></h1>
+      <p class="sub">An interactive command center for the CC Digital QA team — resource workloads, client-wise defects, delivery rounds and a fully searchable master log, all in one animated view.</p>
+      <div class="cta">
+        <button class="btn primary" onclick="document.getElementById('records').scrollIntoView()">🔍 Explore Records</button>
+        <button class="btn ghost" onclick="document.getElementById('resources').scrollIntoView()">🧑‍💻 View Team Workload</button>
+      </div>
+    </div>
+    <div class="banner-stats" id="bannerStats"></div>
+  </div>
+</div>
+
+<main>
+  <!-- DASHBOARD -->
+  <section class="block reveal" id="dashboard">
+    <div class="sec-head">
+      <div><h2><span class="bar"></span>Dashboard Overview</h2><p>Key quality metrics across all QA activity.</p></div>
+    </div>
+    <div class="stat-grid" id="statGrid"></div>
+  </section>
+
+  <!-- QA RESOURCES -->
+  <section class="block reveal" id="resources">
+    <div class="sec-head">
+      <div><h2><span class="bar"></span>QA Resources</h2><p>Bug tasks captured by each QA engineer, in their own section. Filter to focus on one.</p></div>
+      <div class="toolbar">
+        <select id="resFilter"><option value="ALL">All QA Resources</option></select>
+        <select id="resSort">
+          <option value="issues">Sort: Most Issues</option>
+          <option value="tasks">Sort: Most Tasks</option>
+          <option value="name">Sort: Name A–Z</option>
+        </select>
+      </div>
+    </div>
+    <div class="res-wrap" id="resWrap"></div>
+  </section>
+
+  <!-- CLIENTS -->
+  <section class="block reveal" id="clients">
+    <div class="sec-head">
+      <div><h2><span class="bar"></span>Clients</h2><p>Defect distribution per client. Click a card for the full breakdown.</p></div>
+      <div class="toolbar"><select id="clientSort">
+        <option value="issues">Sort: Most Issues</option>
+        <option value="records">Sort: Most Records</option>
+        <option value="name">Sort: Name A–Z</option>
+      </select></div>
+    </div>
+    <div class="client-grid" id="clientGrid"></div>
+  </section>
+
+  <!-- MASTER TABLE -->
+  <section class="block reveal" id="records">
+    <div class="sec-head">
+      <div><h2><span class="bar"></span>Master Table</h2><p>Every row from the source sheet — search, multi-filter, sort any column, paginate &amp; export.</p></div>
+    </div>
+    <div class="table-panel">
+      <div class="table-tools">
+        <div class="grow"><span class="si">🔎</span><input type="search" id="globalSearch" placeholder="Search anything — client, project, requestor, description, ID…"></div>
+        <select id="fClient"><option value="">All Clients</option></select>
+        <select id="fQA"><option value="">All QA Resources</option></select>
+        <select id="fMonth"><option value="">All Months</option></select>
+        <select id="fType"><option value="">All QA Types</option></select>
+        <select id="fSource" style="display:none"><option value="">All Sheets</option></select>
+        <button class="btn ghost" id="clearFilters">✖ Clear</button>
+        <button class="btn primary" id="exportBtn">⬇ Export CSV</button>
+      </div>
+      <div class="tbl-scroll">
+        <table class="master" id="masterTable">
+          <thead><tr id="theadRow"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="table-foot">
+        <div class="muted" id="resultInfo"></div>
+        <div class="toolbar">
+          <span class="muted">Rows:</span>
+          <select id="pageSize"><option>10</option><option selected>15</option><option>25</option><option>50</option><option>100</option></select>
+        </div>
+        <div class="pager" id="pager"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ANALYTICS -->
+  <section class="block reveal" id="analytics">
+    <div class="sec-head">
+      <div><h2><span class="bar"></span>Analytics</h2><p>Visual breakdown of issues by client, QA resource, month and QA type.</p></div>
+    </div>
+    <div class="charts" id="charts"></div>
+  </section>
+</main>
+
+<!-- FOOTER -->
+<footer id="team">
+  <div class="foot-inner">
+    <div class="foot-col">
+      <h5>QA Lead</h5>
+      <div class="lead-card" id="leadCard"></div>
+    </div>
+    <div class="foot-col">
+      <h5>QA Team</h5>
+      <div class="team-list" id="teamList"></div>
+    </div>
+    <div class="foot-col">
+      <h5>About</h5>
+      <p class="muted" style="line-height:1.7;font-size:13px">CC Digital — QA Error Tracker. This dashboard mirrors the QA tracking sheet and refreshes from the live source. Built for fast triage, workload balancing and client reporting.</p>
+      <p class="muted" style="font-size:13px">📧 qa-team@ccdigital.example<br>🕓 Mon–Fri · 9:00–18:00 IST</p>
+    </div>
+  </div>
+  <div class="foot-bottom">© <span id="year"></span> CC Digital · QA Bug Tracker</div>
+</footer>
+
+<!-- MODAL -->
+<div class="modal" id="modal">
+  <div class="back" onclick="closeModal()"></div>
+  <div class="box">
+    <header><h3 id="modalTitle" style="margin:0">Details</h3><button class="x" onclick="closeModal()">✕</button></header>
+    <div class="body" id="modalBody"></div>
+  </div>
+</div>
+
+<?!= include('JavaScript'); ?>
+</body>
+</html>
