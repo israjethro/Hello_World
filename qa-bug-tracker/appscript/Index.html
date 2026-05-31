@@ -62,7 +62,7 @@
   <!-- QA RESOURCES -->
   <section class="block reveal" id="resources">
     <div class="sec-head">
-      <div><h2><span class="bar"></span>QA Resource Workload</h2><p>Bug tasks captured by each QA engineer, in their own section. Filter to focus on one.</p></div>
+      <div><h2><span class="bar"></span>QA Resources</h2><p>Bug tasks captured by each QA engineer, in their own section. Filter to focus on one.</p></div>
       <div class="toolbar">
         <select id="resFilter"><option value="ALL">All QA Resources</option></select>
         <select id="resSort">
@@ -78,7 +78,7 @@
   <!-- CLIENTS -->
   <section class="block reveal" id="clients">
     <div class="sec-head">
-      <div><h2><span class="bar"></span>Client-wise Bugs</h2><p>Defect distribution per client. Click a card for the full breakdown.</p></div>
+      <div><h2><span class="bar"></span>Clients</h2><p>Defect distribution per client. Click a card for the full breakdown.</p></div>
       <div class="toolbar"><select id="clientSort">
         <option value="issues">Sort: Most Issues</option>
         <option value="records">Sort: Most Records</option>
@@ -91,7 +91,7 @@
   <!-- MASTER TABLE -->
   <section class="block reveal" id="records">
     <div class="sec-head">
-      <div><h2><span class="bar"></span>Master Records</h2><p>Every row from the source sheet — search, multi-filter, sort any column, paginate &amp; export.</p></div>
+      <div><h2><span class="bar"></span>Master Table</h2><p>Every row from the source sheet — search, multi-filter, sort any column, paginate &amp; export.</p></div>
     </div>
     <div class="table-panel">
       <div class="table-tools">
@@ -100,6 +100,7 @@
         <select id="fQA"><option value="">All QA Resources</option></select>
         <select id="fMonth"><option value="">All Months</option></select>
         <select id="fType"><option value="">All QA Types</option></select>
+        <select id="fSource" style="display:none"><option value="">All Sheets</option></select>
         <button class="btn ghost" id="clearFilters">✖ Clear</button>
         <button class="btn primary" id="exportBtn">⬇ Export CSV</button>
       </div>

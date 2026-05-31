@@ -16,9 +16,10 @@
  */
 
 var CONFIG = {
-  // Tab that holds the records. Use the active sheet if left blank.
-  SHEET_NAME: '2026',
-  HEADER_ROW: 1,
+  // Tab(s) that hold the records. List one or more tab names to COMBINE them.
+  // Leave as [] to fall back to the currently active tab.
+  SHEETS: ['2026'],          // e.g. ['2025', '2026'] merges multiple years/sheets into one view
+  HEADER_ROW: 1,             // header row number (must be the same on every listed tab)
 
   // Cache makes data load instantly on repeat visits (seconds).
   CACHE_KEY: 'QA_BUG_DATA_V1',
@@ -83,15 +84,27 @@ function getInitData() {
   };
 }
 
-/** Reads + caches the sheet, returning an array of record objects. */
+/** Reads + caches one or more sheets, returning a combined, de-duplicated array. */
 function getBugData() {
   var cached = readCache_(CONFIG.CACHE_KEY);
   if (cached) { try { return JSON.parse(cached); } catch (e) {} }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = CONFIG.SHEET_NAME ? ss.getSheetByName(CONFIG.SHEET_NAME) : ss.getActiveSheet();
-  if (!sheet) throw new Error('Sheet "' + CONFIG.SHEET_NAME + '" not found. Update CONFIG.SHEET_NAME.');
+  var names = (CONFIG.SHEETS && CONFIG.SHEETS.length) ? CONFIG.SHEETS : [ss.getActiveSheet().getName()];
 
+  var rows = [];
+  names.forEach(function (name) {
+    var sheet = ss.getSheetByName(name);
+    if (sheet) rows = rows.concat(readSheet_(sheet, name));   // a missing tab is skipped, not fatal
+  });
+
+  rows = dedupeRows_(rows);
+  writeCache_(CONFIG.CACHE_KEY, JSON.stringify(rows), CONFIG.CACHE_SECONDS);
+  return rows;
+}
+
+/** Reads a single tab into record objects, tagging each with its source tab (_source). */
+function readSheet_(sheet, sourceName) {
   var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
   if (lastRow <= CONFIG.HEADER_ROW) return [];
 
@@ -123,11 +136,25 @@ function getBugData() {
       }
     }
     if (!obj.bugReport) obj.bugReport = { text: '', url: '' };
+    obj._source = sourceName;
     if (hasData) rows.push(obj);
   }
-
-  writeCache_(CONFIG.CACHE_KEY, JSON.stringify(rows), CONFIG.CACHE_SECONDS);
   return rows;
+}
+
+/** Removes repeated rows (case-insensitive, ignoring S NO and source tab). */
+function dedupeRows_(rows) {
+  var keys = ['month', 'receivedDate', 'client', 'project', 'projectId', 'requestor', 'qaResource',
+              'productionResource', 'emailSubject', 'typeOfQA', 'qaDeliveryDate', 'errorDescription',
+              'comments', 'rounds', 'issues'];
+  var seen = {}, out = [];
+  rows.forEach(function (r) {
+    var parts = keys.map(function (k) { return r[k] == null ? '' : String(r[k]).trim().toLowerCase().replace(/\s+/g, ' '); });
+    parts.push(r.bugReport ? (String(r.bugReport.text).trim().toLowerCase() + '|' + r.bugReport.url) : '');
+    var sig = parts.join('\u0001');
+    if (seen[sig]) return; seen[sig] = 1; out.push(r);
+  });
+  return out;
 }
 
 /** Pulls a URL out of a RichTextValue cell (whole-cell or first linked run). */

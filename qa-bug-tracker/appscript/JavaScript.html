@@ -51,6 +51,47 @@
   }
 
   /* ============================================================
+     0. DATA CLEANING — trim, canonical casing, de-duplication
+     Fixes "duplicate / case-sensitive" splits (e.g. Humana vs humana,
+     "Yogesh Kumar D" vs "Yogesh kumar d") and removes repeated rows.
+     ============================================================ */
+  var CANON_FIELDS = ["client", "qaResource", "productionResource", "requestor", "month", "project"];
+  function cleanStr(v) { return v == null ? "" : String(v).replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim(); }
+  function canonicalize(rows) {
+    rows = (rows || []).map(function (r) {
+      var o = {};
+      for (var k in r) {
+        if (!r.hasOwnProperty(k)) continue;
+        if (k === "bugReport") o.bugReport = { text: cleanStr(r.bugReport && r.bugReport.text), url: (r.bugReport && r.bugReport.url) || "" };
+        else if (typeof r[k] === "string") o[k] = cleanStr(r[k]);
+        else o[k] = r[k];
+      }
+      if (!o.bugReport) o.bugReport = { text: "", url: "" };
+      return o;
+    });
+    // Merge values that differ only by case/spacing into the most common spelling.
+    CANON_FIELDS.forEach(function (f) {
+      var freq = {};
+      rows.forEach(function (r) { var v = r[f]; if (!v) return; var key = v.toLowerCase();
+        (freq[key] = freq[key] || {}); freq[key][v] = (freq[key][v] || 0) + 1; });
+      var canon = {};
+      Object.keys(freq).forEach(function (key) { var best = null, bc = -1;
+        Object.keys(freq[key]).forEach(function (o) { if (freq[key][o] > bc) { bc = freq[key][o]; best = o; } }); canon[key] = best; });
+      rows.forEach(function (r) { var v = r[f]; if (v) r[f] = canon[v.toLowerCase()] || v; });
+    });
+    // Drop repeated records (case-insensitive across every column except S NO).
+    var seen = {}, out = [];
+    rows.forEach(function (r) {
+      var sig = COLUMNS.filter(function (c) { return c.key !== "sno"; }).map(function (c) {
+        if (c.key === "bugReport") return r.bugReport ? (r.bugReport.text + "|" + r.bugReport.url) : "";
+        return r[c.key] == null ? "" : String(r[c.key]);
+      }).join("\u0001").toLowerCase();
+      if (seen[sig]) return; seen[sig] = 1; out.push(r);
+    });
+    return out;
+  }
+
+  /* ============================================================
      1. BANNER — animated particle canvas + parallax orbs
      ============================================================ */
   function initBanner() {
@@ -92,7 +133,22 @@
 
     var toggle = $("#navToggle"), menus = $("#menus");
     toggle && toggle.addEventListener("click", function () { menus.classList.toggle("show"); });
-    links.forEach(function (l) { l.addEventListener("click", function () { menus.classList.remove("show"); }); });
+    links.forEach(function (l) {
+      l.addEventListener("click", function (e) {
+        var href = l.getAttribute("href") || "";
+        if (href.charAt(0) === "#") {
+          e.preventDefault();                       // stop hash navigation (blanks the Apps Script iframe)
+          var target = document.querySelector(href);
+          if (target) {
+            target.classList.add("in");             // ensure the section is revealed before we jump
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+            links.forEach(function (x) { x.classList.remove("active"); });
+            l.classList.add("active");
+          }
+        }
+        menus.classList.remove("show");
+      });
+    });
 
     var tb = $("#themeBtn");
     tb && tb.addEventListener("click", function () {
@@ -144,6 +200,18 @@
      4. QA RESOURCE SECTIONS (cards + dropdown filter + sort)
      ============================================================ */
   function severity(n) { n = num(n); return n >= 8 ? "b-hi" : n >= 4 ? "b-mid" : "b-low"; }
+  function tagBg(tag) { return tag === "b-hi" ? "rgba(255,92,124,.18)" : tag === "b-mid" ? "rgba(255,180,67,.18)" : "rgba(39,225,163,.18)"; }
+  function taskCard(r) {
+    var tag = severity(r.issues);
+    return '<div class="task">' +
+      '<div class="row1"><span class="tag ' + tag + '" style="background:' + tagBg(tag) + '">' + esc(r.client || "—") + '</span>' +
+      '<span class="badge-num ' + tag + '">' + esc(r.issues) + ' 🐞</span></div>' +
+      '<h4>' + esc(r.project && r.project !== "NA" ? r.project : String(r.typeOfQA || "").split(",")[0]) + '</h4>' +
+      '<div class="desc">' + esc(r.errorDescription) + '</div>' +
+      '<div class="foot"><span class="pill">' + esc(r.month) + ' · R' + esc(r.rounds) + '</span>' +
+      (r.bugReport && r.bugReport.url ? '<a class="lnk" href="' + esc(r.bugReport.url) + '" target="_blank" rel="noopener">Bug Report ↗</a>' : '<span class="muted">No report</span>') +
+      '</div></div>';
+  }
   function buildResourceData() {
     var map = {};
     DATA.forEach(function (r) {
@@ -154,6 +222,8 @@
     });
     return Object.keys(map).map(function (k) { var o = map[k]; o.clientCount = Object.keys(o.clients).length; return o; });
   }
+  var RES_TASK_LIMIT = 6;          // tasks shown per engineer before "Show all"
+  var resExpanded = {};
   function renderResources() {
     var groups = buildResourceData();
     var filter = $("#resFilter").value, sort = $("#resSort").value;
@@ -163,24 +233,23 @@
     if (filter !== "ALL") groups = groups.filter(function (g) { return g.name === filter; });
 
     $("#resWrap").innerHTML = groups.map(function (g) {
-      var col = colorFor(g.name);
-      var tasks = g.rows.slice().sort(function (a, b) { return num(b.issues) - num(a.issues); }).map(function (r) {
-        var tag = severity(r.issues);
-        return '<div class="task">' +
-          '<div class="row1"><span class="tag ' + tag + '" style="background:' + (tag === "b-hi" ? "rgba(255,92,124,.18)" : tag === "b-mid" ? "rgba(255,180,67,.18)" : "rgba(39,225,163,.18)") + '">' + esc(r.client || "—") + '</span>' +
-          '<span class="badge-num ' + tag + '">' + esc(r.issues) + ' 🐞</span></div>' +
-          '<h4>' + esc(r.project && r.project !== "NA" ? r.project : r.typeOfQA.split(",")[0]) + '</h4>' +
-          '<div class="desc">' + esc(r.errorDescription) + '</div>' +
-          '<div class="foot"><span class="pill">' + esc(r.month) + ' · R' + esc(r.rounds) + '</span>' +
-          (r.bugReport && r.bugReport.url ? '<a class="lnk" href="' + esc(r.bugReport.url) + '" target="_blank" rel="noopener">Bug Report ↗</a>' : '<span class="muted">No report</span>') +
-          '</div></div>';
-      }).join("");
+      var sorted = g.rows.slice().sort(function (a, b) { return num(b.issues) - num(a.issues); });
+      var expanded = !!resExpanded[g.name];
+      var shown = expanded ? sorted : sorted.slice(0, RES_TASK_LIMIT);
+      var tasks = shown.map(taskCard).join("");
+      var more = g.rows.length > RES_TASK_LIMIT
+        ? '<div class="task-more"><button class="btn ghost" data-res="' + esc(g.name) + '">' + (expanded ? "Show less ▲" : "Show all " + g.rows.length + " tasks ▼") + "</button></div>"
+        : "";
       return '<div class="res-card">' +
         '<div class="res-top"><div class="avatar" style="background:' + gradFor(g.name) + '">' + initials(g.name) + '</div>' +
         '<div class="meta"><h3>' + esc(g.name) + '</h3><span>' + g.rows.length + ' tasks · ' + g.clientCount + ' clients</span></div>' +
         '<div class="res-kpis"><span class="chip brand">' + g.rows.length + ' tasks</span><span class="chip warn">' + g.issues + ' issues</span><span class="chip ok">' + g.rounds + ' rounds</span></div></div>' +
-        '<div class="task-grid">' + (tasks || '<div class="empty">No tasks.</div>') + '</div></div>';
+        '<div class="task-grid">' + (tasks || '<div class="empty">No tasks.</div>') + '</div>' + more + '</div>';
     }).join("") || '<div class="empty">No QA resources found.</div>';
+
+    $$("#resWrap .task-more button").forEach(function (b) {
+      b.addEventListener("click", function () { var n = b.getAttribute("data-res"); resExpanded[n] = !resExpanded[n]; renderResources(); });
+    });
   }
   function initResourceControls() {
     var names = uniq(DATA.map(function (r) { return r.qaResource; }).filter(Boolean)).sort();
@@ -249,7 +318,7 @@
   /* ============================================================
      6. MASTER TABLE — search, multi-filter, sort, paginate, export
      ============================================================ */
-  var tState = { search: "", client: "", qa: "", month: "", type: "", sortKey: "sno", sortDir: 1, page: 1, size: 15 };
+  var tState = { search: "", client: "", qa: "", month: "", type: "", source: "", sortKey: "sno", sortDir: 1, page: 1, size: 15 };
 
   function buildHead() {
     $("#theadRow").innerHTML = COLUMNS.map(function (c) {
@@ -271,6 +340,7 @@
       if (tState.qa && r.qaResource !== tState.qa) return false;
       if (tState.month && r.month !== tState.month) return false;
       if (tState.type && String(r.typeOfQA).indexOf(tState.type) < 0) return false;
+      if (tState.source && (r._source || "") !== tState.source) return false;
       if (!q) return true;
       return COLUMNS.some(function (c) { return String(cellValue(r, c.key) || "").toLowerCase().indexOf(q) >= 0; });
     });
@@ -349,6 +419,15 @@
     $("#fMonth").innerHTML  = opts(months, "All Months");
     $("#fType").innerHTML   = opts(types, "All QA Types");
 
+    // Source/Sheet filter — only shown when records come from more than one sheet (multi-sheet build).
+    var sources = uniq(DATA.map(function (r) { return r._source; }).filter(Boolean)).sort();
+    var srcSel = $("#fSource");
+    if (srcSel) {
+      if (sources.length > 1) { srcSel.innerHTML = opts(sources, "All Sheets"); srcSel.style.display = ""; }
+      else { srcSel.style.display = "none"; }
+      srcSel.addEventListener("change", function (e) { tState.source = e.target.value; tState.page = 1; renderTable(); });
+    }
+
     var deb; $("#globalSearch").addEventListener("input", function (e) { clearTimeout(deb); var val = e.target.value; deb = setTimeout(function () { tState.search = val; tState.page = 1; renderTable(); }, 160); });
     $("#fClient").addEventListener("change", function (e) { tState.client = e.target.value; tState.page = 1; renderTable(); });
     $("#fQA").addEventListener("change", function (e) { tState.qa = e.target.value; tState.page = 1; renderTable(); });
@@ -356,8 +435,9 @@
     $("#fType").addEventListener("change", function (e) { tState.type = e.target.value; tState.page = 1; renderTable(); });
     $("#pageSize").addEventListener("change", function (e) { tState.size = +e.target.value; tState.page = 1; renderTable(); });
     $("#clearFilters").addEventListener("click", function () {
-      tState = { search: "", client: "", qa: "", month: "", type: "", sortKey: "sno", sortDir: 1, page: 1, size: tState.size };
-      $("#globalSearch").value = ""; $("#fClient").value = ""; $("#fQA").value = ""; $("#fMonth").value = ""; $("#fType").value = ""; renderTable();
+      tState = { search: "", client: "", qa: "", month: "", type: "", source: "", sortKey: "sno", sortDir: 1, page: 1, size: tState.size };
+      $("#globalSearch").value = ""; $("#fClient").value = ""; $("#fQA").value = ""; $("#fMonth").value = ""; $("#fType").value = "";
+      if ($("#fSource")) $("#fSource").value = ""; renderTable();
     });
     $("#exportBtn").addEventListener("click", exportCSV);
   }
@@ -423,16 +503,26 @@
   /* ============================================================
      9. REVEAL + COUNT-UP OBSERVERS
      ============================================================ */
+  var _revealIO = null;
+  function revealEl(el) {
+    el.classList.add("in");
+    $$("[data-c]", el).forEach(function (x) { if (!x.dataset.done) { x.dataset.done = 1; countUp(x, +x.getAttribute("data-c")); } });
+  }
   function initReveal() {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (!en.isIntersecting) return;
-        en.target.classList.add("in");
-        $$("[data-c]", en.target).forEach(function (el) { if (!el.dataset.done) { el.dataset.done = 1; countUp(el, +el.getAttribute("data-c")); } });
-        io.unobserve(en.target);
-      });
-    }, { threshold: .12 });
-    $$(".reveal").forEach(function (el) { io.observe(el); });
+    var els = $$(".reveal");
+    // No observer support → just show everything.
+    if (!("IntersectionObserver" in window)) { els.forEach(revealEl); }
+    else {
+      if (_revealIO) _revealIO.disconnect();
+      // threshold 0 = reveal as soon as ANY pixel enters the viewport. This is the key fix:
+      // very tall sections (e.g. QA Resources) could never reach the old 12% threshold and stayed hidden.
+      _revealIO = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) { if (en.isIntersecting) { revealEl(en.target); _revealIO.unobserve(en.target); } });
+      }, { threshold: 0, rootMargin: "0px 0px -5% 0px" });
+      els.forEach(function (el) { if (!el.classList.contains("in")) _revealIO.observe(el); });
+      // Safety net: never leave a section hidden, whatever its height.
+      setTimeout(function () { $$(".reveal").forEach(function (el) { if (!el.classList.contains("in")) revealEl(el); }); }, 1400);
+    }
     // banner stats count up immediately
     $$("#bannerStats [data-c]").forEach(function (el) { countUp(el, +el.getAttribute("data-c")); });
   }
@@ -464,6 +554,7 @@
           var info = $("#resultInfo"); if (info) info.textContent = "Could not load sheet data: " + (err && err.message ? err.message : err); })
         .getInitData();
     } else {
+      DATA = canonicalize(DATA);
       render();
       setTimeout(hideLoader, 450);
     }
@@ -471,6 +562,6 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 
   // expose a hook so the Apps Script build can inject live data then re-render
-  window.__setData = function (rows, cfg) { DATA = rows || []; if (cfg) window.APP_CONFIG = CFG = cfg; render(); };
+  window.__setData = function (rows, cfg) { DATA = canonicalize(rows || []); if (cfg) { window.APP_CONFIG = CFG = cfg; } render(); };
 })();
 </script>

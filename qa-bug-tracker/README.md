@@ -25,6 +25,8 @@ An interactive, 3D-animated **Bug Tracking dashboard** built on top of the 17-co
   global search, per-column sort, Client / QA / Month / QA-Type filters, page-size control, pagination, **CSV export**, sticky headers, severity color coding and clickable Bug Report links.
 - **Analytics** — pure SVG/CSS bar + donut charts (issues by client, QA resource, month, QA type).
 - **Footer** — QA Lead card + the 5-member QA team.
+- **De-duplication + case-normalization** — repeated rows are dropped and values that differ only by case/spacing (e.g. `Humana`/`humana`, `Yogesh Kumar D`/`Yogesh kumar d`) are merged into the most-common spelling, so resources/clients don't split into phantom groups.
+- **Multi-sheet** — combine several tabs (e.g. `2025` + `2026`) into one view; a **Sheet** filter appears automatically in the master table when more than one source is loaded.
 - **Fast data reflecting** — server-side chunked caching + a single round-trip load + 100% client-side filtering/sorting for instant interaction.
 
 ---
@@ -51,7 +53,7 @@ sheet will not break the app.
    - `JavaScript.html`
    *(Apps Script HTML files are created as “HTML”; the `.html` is implied.)*
 3. Open `Code.gs` and edit **`CONFIG`**:
-   - `SHEET_NAME` → the tab that holds the data (e.g. `2026`).
+   - `SHEETS` → array of tab name(s) holding the data, e.g. `['2026']` or `['2025', '2026']` to **combine multiple sheets**. Leave `[]` to use the active tab.
    - `QA_LEAD` and the 5 `TEAM` members (names / roles / emails).
 4. **Deploy → New deployment → Web app**
    - *Execute as:* **Me**
@@ -59,6 +61,24 @@ sheet will not break the app.
    - **Deploy** and open the web-app URL.
 5. After large edits, use the **“QA Tracker ▸ Refresh data cache”** menu in the sheet
    (added automatically on open) to clear the cache instantly.
+
+### 🔗 Combining data from more than one sheet/tab
+
+Set `CONFIG.SHEETS` to the list of tabs you want to merge:
+
+```js
+SHEETS: ['2025', '2026'],   // both tabs are read, combined and de-duplicated
+```
+
+- Every listed tab must use the **same header row** and column names (matched by `HEADER_MAP`).
+- Rows are merged, then **de-duplicated** (case-insensitive, ignoring `S NO`).
+- Each record is tagged with its source tab, and a **“All Sheets” filter** appears in the
+  master table so you can narrow to one tab.
+- Tabs in the list that don't exist are skipped (not an error).
+
+> Want data from a **different spreadsheet file** (not just another tab)? Open that file's ID
+> and read it with `SpreadsheetApp.openById('FILE_ID').getSheetByName('Tab')` inside
+> `getBugData()` — the rest of the pipeline is unchanged.
 
 ---
 
